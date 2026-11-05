@@ -23,7 +23,7 @@ About opening logo image and goodbye image.
 //#define SKIP_CONNECTION //skip elm327 BT connection to view meter
 //#define TEST_DTC //test DTC
 
-//#define FORD_T5   // FOR FORD T5 uncomment this line
+//FORD_T5 (the vehicle variant) is set at the top of gauge_tables.cpp
 
 //Intermal temperature sensor function declaration
 #ifdef __cplusplus
@@ -44,6 +44,7 @@ Preferences pref;         //create preference
 #include <BluetoothSerial.h>
 #include <TFT_eSPI.h>  //Hardware-specific library
 #include "obd_reply.h"  //turns ELM327 replies into values
+#include "gauge_tables.h"  //the PIDs and layouts
 
 
 //Pin configuration
@@ -70,77 +71,13 @@ const uint8_t elm327InitCount = 8;
 const String elm327Init[elm327InitCount] = { "ATZ", "ATBRD23", "ATSP0", "ATAT2", "ATL0", "ATH0", "ATE0", "0100" };  //agressive wait response time from ECU
 //const String elm327Init[elm327InitCount] = {"ATZ","ATPP0CSV35","ATPP0CON","ATSP0","ATAT2","ATL0","ATH0","ATE0","0100"};//agressive wait response time from ECU
 
-/*------ PIDS total 7 now -------------------
-Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit, warn }
-label = Pid label show on meter
-unit = unit for pid
-pid = string pid 0104
-formula = formula no to calculate 
-min = lowest value
-max = highest value
-skip = delay reading 0 - 3; 3 = max delay read
-digit = want to show digit or not
-warn = default warning value
-*/
-const String pidConfig[7][9] = {
-  //[pid][data]
-  { "ENG Load", "%", "0104", "2", "0", "100", "0", "0", "80" },      //0 = 0104
-  { "ECT", "`C", "0105", "1", "0", "120", "3", "0", "99" },          //1 = 0105
-  { "MAP", "psi", "010B", "0", "0", "40", "0", "1", "35" },          //2 = 010B
-  { "ENG SPD", "rpm", "010C", "3", "0", "5000", "0", "0", "4000" },  //3 = 010C
-  { "PCM Volt", "volt", "0142", "4", "0", "16", "1", "1", "15" },    //4 = 0142
-#ifdef FORD_T5
-  { "IAT", "`C", "010F", "1", "0", "120", "3", "0", "99" },  //5 = 015C
-#else
-  { "Oil Temp", "`C", "015C", "1", "0", "120", "3", "0", "99" },     //5 = 015C
-#endif
-#ifdef FORD_T5
-  { "TFT", "`C", "221674", "6", "0", "120", "3", "0", "99" }  //6 = 221674 for FORD T5
-#else
-  { "Trans Temp", "`C", "221E1C", "5", "0", "120", "3", "1", "99" }  //6 = 221E1C for FORD T6+
-#endif
-
-};
-
-//barometric pressure "0133"  turbo boost = map - bp;
 //hold warning value
-String warningValue[7] = { "80", "99", "35", "4000", "15", "99", "99" };
-
-/*  User configuration here to change display 
-      layout 0      layout 1       layout 2     layout 3      layout 4     layout 5
-    █ 1 █ █ 7 █   █ 1 █  █  █    █  █ 4 █  █   █  █  █ 7 █   █  █  █  █   █  █  █  █
-    █ 2 █ █ 8 █   █ 2 █  3  4    1  █ 5 █  4   1  2  █ 8 █   1  2  3  4   1  2  3  4
-    █ 3 █ █ 9 █   █ 3 █  █  █    █  █ 6 █  █   █  █  █ 9 █   █  █  █  █   █  █  █  █
-
-set up meter here which pid to use on each cell
-0 - engine load
-1 - coolant
-2 - manifold Pressure
-3 - engine Speed
-4 - pcm volt
-5 - oil Temp
-6 - trans Temp
-*/
-const uint8_t pidInCell[8][7] = {
-  //[layout][cellNo]
-  //the last cell must be 3 (engine speed) to check engine off
-  { 0, 2, 3, 1, 5, 6, 4 },  //layout 0 -> 6 cell {load,map,engspd,coolant,oil,tft,pcmvolt
-  { 0, 2, 3, 1, 5, 6, 4 },  //layout 1 -> 6 cell {load,map,engspd,coolant,oil,tft,pcmvolt
-  { 0, 2, 3, 1, 5, 6, 4 },  //layout 2 -> 6 cell {load,map,engspd,coolant,oil,tft,pcmvolt
-  { 1, 5, 6, 3, 2, 4, 4 },  //layout 3 -> 5 cell {cooland,oil,tft,map,pcmvolt,pcmvolt}
-  { 2, 1, 5, 6, 4, 0, 4 },  //layout 4 -> 5 cell {MAP,coolant,oiltemp,tft,pcmvolt,load,pcmvolt}
-  { 2, 0, 1, 5, 6, 4, 4 },  //layout 5 -> 5 cell {MAP,engload,coolant,oiltemp,tft,engload,rpm}
-  { 1, 5, 6, 4, 0, 3, 4 },  //layout 6 -> 4 cell {coolant,oiltemp,tft,pcmvolt,map,endspd,pcmvolt}
-  { 3, 2, 0, 4, 1, 5, 4 },  //layout 7 -> 4 cell {engspd,map,engload,pcmvolt,coolant,oil,pcmvolt}
-};
-// User configuration here to change display  >
+String warningValue[kPidCount];
 
 /*---------------------------*/
 //if NO DATA value will set to 0 to skip reading
-uint8_t layout = 0;                                   //pidInCelltype 0-4 EEPROM 0x00
-const uint8_t max_layout = array_length(pidInCell);   //total 5 type of display page
+uint8_t layout = 0;                                   //current layout, saved in NVS
 uint8_t pidIndex = 0;                                 //point to PID List
-const uint8_t maxpidIndex = array_length(pidConfig);  //total 7 pids in picConfig
 bool prompt = false;                                  //bt elm ready flag
 bool skip = false;                                    //pid skip flag
 uint8_t A = 0;                                        //get A
@@ -352,15 +289,15 @@ warning value: uint16_t
 recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
 }*/
   layout = pref.getUShort("layout", 0);  //load layout setting from NVR
-  if (layout > max_layout) layout = 0;
+  if (layout > kLayoutCount) layout = 0;
   showsystem = pref.getBool("showsystem", false);             //load showsytem
   tempOffset = pref.getInt("tempOffset", factoryTempOffset);  //load defaultTempoffset
 #ifdef SERIAL_DEBUG
   Serial.printf("Show System: %d\n", showsystem);
   Serial.printf("Temp Offset: %d\n", tempOffset);
 #endif
-  for (uint8_t i = 0; i < maxpidIndex; i++) {  //read warning value from pid name if not found load from default
-    warningValue[i] = pref.getString(pidConfig[i][0].c_str(), pidConfig[i][8]);
+  for (uint8_t i = 0; i < kPidCount; i++) {  //read warning value if not found load from default
+    warningValue[i] = pref.getString(pidTable[i].settingKey, String(pidTable[i].defaultWarning));
   }
   pref.getBytes("recent_client", recent_client_addr, pref.getBytesLength("recent_client"));  //read last bt address
   ecu_off_volt = pref.getFloat("ecu_off_volt", factoryECUOff);                               //read ecu 0ff voltage
@@ -445,13 +382,13 @@ void loop() {
   } else {                                    //button release
     if (press) {                              //change layout next page
       layout++;                               //change to next layout page
-      if (layout == max_layout) layout = 0;
+      if (layout == kLayoutCount) layout = 0;
       ledcWriteTone(buzzerChannel, 5000);  //play click sound
       delay(5);
       ledcWriteTone(buzzerChannel, 0);
       initScreen();  //open meter screen
                      //reset variable
-      for (uint8_t i = 0; i < maxpidIndex - 1; i++) old_data[i] = 0.0;
+      for (uint8_t i = 0; i < kSlotCount - 1; i++) old_data[i] = 0.0;
       engine_off_count = 0;
       BTSerial.flush();                   //clear tx
       while (BTSerial.available() > 0) {  //clear rx buffer
@@ -459,7 +396,7 @@ void loop() {
       }
       bt_message = "";
       skip = false;
-      pidIndex = maxpidIndex - 1;  //will be +1 to be 0
+      pidIndex = kSlotCount - 1;  //will be +1 to be 0
       press = false;               //reset flag
       prompt = true;               //to trig reading elm again
       delay(200);                  //delay avoid bounce
@@ -516,7 +453,7 @@ void loop() {
       pidRead++;                          //for calculate pid/s
     }
     pidIndex++;  //point to next pid
-    if (pidIndex >= maxpidIndex) {
+    if (pidIndex >= kSlotCount) {
       pidIndex = 0;  //back to pid 0
       autoDim();     //auto backlight handle
       if (showsystem) {

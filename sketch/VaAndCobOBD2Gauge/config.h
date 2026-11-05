@@ -30,21 +30,6 @@ const String menuList[8] = {
   }; 
 const uint8_t maxMenu = array_length(menuList);//length of menu list
 
-//menu list for warning setting
-const String parameterList[8][2] = {
-    {"CPU Overheat Temperature "+String(tempOverheat)+"`c ,offset "," `c  "},
-    {"- Engine Load"," %  "},
-    {"- Coolant Temperature"," `c  "},
-    {"- Manifold Air Pressure"," psi "},
-    {"- Engine Speed"," rpm "},
-    {"- PCM Voltage"," volt"},
-    {"- Engine Oil Temperature"," `c  "},
-    {"- Transmission Fluid Temperature"," `c  "}
-  };  
-
-//increasement and decreasement of each PID  
-const int pidWarnStep[8] = {1,5,1,5,500,1,1,1};
-
 //Sprites
 TFT_eSprite car = TFT_eSprite(&tft);
 TFT_eSprite bk = TFT_eSprite(&tft);
@@ -180,10 +165,15 @@ void animation() {//start field effect
 /*------------------*/ 
 //highlight and change warning each menu
 void setWarning(int8_t index, int8_t change) {
-  for (uint8_t i = 0;i<maxpidIndex+1;i++) {//draw all pid list
+  for (uint8_t i = 0;i<kPidCount+1;i++) {//draw all pid list
      tft.setTextColor(TFT_WHITE,TFT_BLACK);
-     tft.drawString(parameterList[i][0],0,58+(i*16),2);//paramter list
-     tft.drawRightString(parameterList[i][1],319,57+(i*16),2);//unit
+     if (i == 0) {
+       tft.drawString("CPU Overheat Temperature "+String(tempOverheat)+"`c ,offset ",0,58,2);
+       tft.drawRightString(" `c  ",319,57,2);
+     } else {
+       tft.drawString(pidTable[i-1].menuLabel,0,58+(i*16),2);//paramter list
+       tft.drawRightString(pidTable[i-1].menuUnit,319,57+(i*16),2);//unit
+     }
      String result = "";
      if (i == 0)  result = String(tempOffset);
      else result = warningValue[i-1];
@@ -201,11 +191,11 @@ void setWarning(int8_t index, int8_t change) {
       int min = -99;//min temp offset
       int max = 0;//max temp offset
       if (change == -1) {//decrease
-        tempOffset = tempOffset - pidWarnStep[index];
+        tempOffset = tempOffset - 1;
         if (tempOffset < min) tempOffset = min;          
       }
       if (change == 1) {//incrase
-        tempOffset = tempOffset + pidWarnStep[index];
+        tempOffset = tempOffset + 1;
         if (tempOffset > max) tempOffset = max;
       }
       String result = String(tempOffset);
@@ -217,14 +207,15 @@ void setWarning(int8_t index, int8_t change) {
       tft.drawRightString(result,285,57+(index*16),2);//cpu offset
     } else {//other pid
 
-      int min = pidConfig[index-1][4].toInt();//get min
-      int max = pidConfig[index-1][5].toInt();//get max
+      int min = pidTable[index-1].minValue;//get min
+      int max = pidTable[index-1].maxValue;//get max
+      int step = pidTable[index-1].warningStep;
       if (change == -1) {//decrease  
-        warningValue[index-1] = String(warningValue[index-1].toInt() - pidWarnStep[index]);
+        warningValue[index-1] = String(warningValue[index-1].toInt() - step);
         if (warningValue[index-1].toInt() < min) warningValue[index-1] = String(min);          
       }
       if (change == 1) {//increase
-       warningValue[index-1] = String(warningValue[index-1].toInt() + pidWarnStep[index]);
+       warningValue[index-1] = String(warningValue[index-1].toInt() + step);
         if (warningValue[index-1].toInt() > max) warningValue[index-1] = String(max);
       }
       String result = warningValue[index-1];
@@ -445,14 +436,14 @@ void configMenu() {//control configuration menu
                 if (t_x < 64) {//DEFAULT
                   tempOffset = factoryTempOffset;//load default
                  //read default warning value
-                  for (uint8_t i=0;i < maxpidIndex; i++) warningValue[i] = pidConfig[i][8];
+                  for (uint8_t i=0;i < kPidCount; i++) warningValue[i] = String(pidTable[i].defaultWarning);
                 }
                 if ((t_x >= 64) && (t_x <128)) warningMenuIndex--;//prev
                 if ((t_x >= 128) && (t_x <192)) warningMenuIndex++;//next
                 if ((t_x >= 192) && (t_x <256)) inc_dec = -1;//decrease
                 if ((t_x >= 256) && (t_x <320)) inc_dec = 1;//increase
-                if (warningMenuIndex == maxpidIndex+1) warningMenuIndex = 0;
-                if (warningMenuIndex < 0) warningMenuIndex = maxpidIndex;
+                if (warningMenuIndex == kPidCount+1) warningMenuIndex = 0;
+                if (warningMenuIndex < 0) warningMenuIndex = kPidCount;
 
                 setWarning(warningMenuIndex,inc_dec);//update list
                 inc_dec = 0;//reset 
@@ -461,8 +452,8 @@ void configMenu() {//control configuration menu
             }//while 
            //exit and save warning data to preference
           pref.putInt("tempOffset",tempOffset);//save tempoffset
-          for (uint8_t i=0;i < maxpidIndex; i++) {//save all pid
-            pref.putString(pidConfig[i][0].c_str(),warningValue[i]);          
+          for (uint8_t i=0;i < kPidCount; i++) {//save all pid
+            pref.putString(pidTable[i].settingKey,warningValue[i]);          
           }          
           tft.setTextColor(TFT_BLACK,TFT_GREEN);
           tft.drawCentreString("Parameters Saved.",159,120,4); 

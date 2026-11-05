@@ -83,15 +83,15 @@ The DTC and VIN screens use a separate blocking path: `getPID()` in `elm327.h`, 
 
 Meter code uses three different indexes, often in the same function:
 
-- **PID index** (0-6) is a row in `pidConfig` and `warningValue`. `parameterList` and `pidWarnStep` use the same order offset by one, because their entry 0 is the CPU temperature offset.
-- **Slot** (0-6) is a position in the current layout's poll order: `pidIndex`, `pidList`, `pidReadSkip`, `old_data`. `pidInCell[layout][slot]` gives the PID index.
-- **Cell** is a screen position: 1-9 for arc and numeric meters, 1-4 for vertical bars. Cells are hard-coded per layout in `initScreen()` and `updateMeter()`.
+- **PID index** (0-6) is a row in `pidTable` and `warningValue`.
+- **Slot** (0-6) is a position in the current layout's poll order: `pidIndex`, `pidList`, `pidReadSkip`, `old_data`. `layoutTable[layout][slot]` gives its PID index, meter type and cell.
+- **Cell** is a screen position: 1-9 for arc and numeric meters, 1-4 for vertical bars.
 
-To change a layout, keep the `pidInCell` row and its `case` in both `initScreen()` and `updateMeter()` in agreement. Slots a layout doesn't draw call `engine_onoff()`. Every layout routes slot 6 there, and auto-off only fires when that slot holds PID 4 (PCM volts, `0142`), so keep PID 4 in slot 6.
+`gauge_tables.cpp` holds both tables, and `make -C test` checks them. To change a layout, edit its row in `layoutTable`. Slots without a meter are still polled, and auto-off needs PID 4 (PCM volts, `0142`) in the last slot of every layout.
 
-To add a PID, update `pidConfig`, `warningValue`, `pidInCell`, `parameterList` and `pidWarnStep`, add a `Formula` and its `case` in `toReading()`, and raise the count hard-coded in those array sizes and in `initScreen()`.
+To add a PID, add a row to `pidTable` and raise `kPidCount`, plus a `Formula` and its `case` in `toReading()` if none fits.
 
-`FORD_T5` swaps two `pidConfig` rows: oil temperature becomes IAT, and transmission temperature moves from `221E1C` to `221674` with a different formula.
+`FORD_T5` swaps two `pidTable` rows: oil temperature becomes IAT, and transmission temperature moves from `221E1C` to `221674` with a different formula. Set it with `-DFORD_T5` or at the top of `gauge_tables.cpp`, because a `#define` in the `.ino` doesn't reach that file.
 
 ### Blocking screens
 
@@ -106,7 +106,7 @@ Both shutdown paths use deep sleep, and waking re-runs `setup()` from scratch:
 
 ### Persistent state
 
-- **NVS namespace `setting`**, opened in `setup()` and left open: `layout` (saved only at auto-off), `showsystem`, `tempOffset`, `ecu_off_volt`, `recent_client`, and one warning value per PID keyed by its `pidConfig` label. Renaming a label orphans the saved value, and labels must stay within NVS's 15-character key limit.
+- **NVS namespace `setting`**, opened in `setup()` and left open: `layout` (saved only at auto-off), `showsystem`, `tempOffset`, `ecu_off_volt`, `recent_client`, and one warning value per PID keyed by its `settingKey` in `pidTable`. Changing a key orphans the saved value, and keys must stay within NVS's 15-character limit.
 - **NVS namespace `security`**: `serialno`, read by `checkGenuine()`. The call is commented out at `.ino:342`.
 - **SPIFFS**: `/TouchCalData1`, `/mypic.jpg` (copied from SD by the menu), `/vaandcob.jpg`. `firmware/partitions.bin` gives SPIFFS 128 KB, despite the scheme's 190 KB label.
 
@@ -128,4 +128,4 @@ The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page ru
 - **Fresh flash:** with no `/TouchCalData1`, `touch_calibrate()` blocks `setup()` until all four corners are touched (holding the button at boot forces recalibration). The logo screen then shows a red "File not found" for 3 s, because nothing in this repo writes `/vaandcob.jpg`. Both are expected.
 - **Pins:** the display's are in `User_Setup.h`, the touch controller's in `touchscreen.h`, and the rest at the top of the `.ino`, duplicated in `gauge_factory_init.ino`. The button is also hard-coded as `GPIO_NUM_27` at `.ino:222` and `meter.h:434`.
 - **Build output:** `.gitignore` only covers `.DS_Store` and some `build/` output is tracked. The IDE's "Export Compiled Binary" writes there, so keep those changes out of commits.
-- **Stale comments:** trust the code over the comments. The `.ino` header's line numbers have drifted and it says littleFS where the code uses SPIFFS. The `pidInCell` comment and parts of `engine_onoff()` say auto-off uses engine speed, but it checks PCM volts.
+- **Stale comments:** trust the code over the comments. The `.ino` header's line numbers have drifted and it says littleFS where the code uses SPIFFS.

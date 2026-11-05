@@ -15,7 +15,11 @@ $(BUILD)/$(1): test.h $(2) $(wildcard $(SKETCH)/*.h)
 	$(CXX) $(CXXFLAGS) $(3) -o $$@ $(2)
 endef
 
+TABLES := test_gauge_tables.cpp $(SKETCH)/gauge_tables.cpp
+
 $(eval $(call add_test,obd_reply,test_obd_reply.cpp $(SKETCH)/obd_reply.cpp))
+$(eval $(call add_test,gauge_tables_t6,$(TABLES)))
+$(eval $(call add_test,gauge_tables_t5,$(TABLES),-DFORD_T5))
 
 .PHONY: all clean
 all: $(TESTS:%=run-%)

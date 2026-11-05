@@ -2,26 +2,13 @@
 
 const uint16_t screenWidth = tft.height();//landscape
 const uint16_t screenHeight = tft.width();
-/*---- METER ------_*
- Type 0:numericMeter
- Type 1:arcMeters
- Type 2:vBarMeter
-coordinate for each cell (numieric meter & arc meter)
-1 , 4 , 7
-2 , 5 , 8
-3 , 6 , 9 */
-const uint16_t cell1_x[9] = { 0, 0, 0, 80, 80, 80, 160, 160, 160 };  //cell type 1 x origin cooridate
-const uint16_t cell1_y[9] = { 0, 80, 160, 0, 80, 160, 0, 80, 160 };  //cell type 1 y origin coordiate
-/*coordinate for each cell type 2 (Vertical bar meter)
-1 , 2 , 3 , 4 */
-const uint16_t cell2_x[4] = { 0, 80, 160, 240 }; //vertical bar cell x origin coordinate
 bool blinkCell[9] = {false,false,false,false,false,false,false,false,false};//flag for blinking
 
-String pidList[maxpidIndex] = {};          //{"0104","0105","010C","010B","010C","0142","015C"}
-uint8_t pidReadSkip[maxpidIndex] = {};     //skip reading 0 - 3; 3 = max delay read
-uint8_t pidCurrentSkip[maxpidIndex] = {};  //current skip counter
+String pidList[kSlotCount] = {};          //{"0104","0105","010C","010B","010C","0142","015C"}
+uint8_t pidReadSkip[kSlotCount] = {};     //skip reading 0 - 3; 3 = max delay read
+uint8_t pidCurrentSkip[kSlotCount] = {};  //current skip counter
 uint8_t engine_off_count = 0;//counter to indicate engine is off then sleep
-float old_data[maxpidIndex] = {};//keep old data for each gauge to improve speed for pidIndex 0-6
+float old_data[kSlotCount] = {};//keep old data for each gauge to improve speed for pidIndex 0-6
 
 //backlight variable average counter
 uint8_t low_count = 0;
@@ -40,10 +27,9 @@ cell
 void numericMeter(uint8_t cell, uint8_t pid) {
   int w = screenWidth / 2;
   int h = screenHeight / 3;
-  int x = cell1_x[cell - 1];
-  int y = cell1_y[cell - 1];
-  // Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit }
-  String label = pidConfig[pid][0];  //get PID to label
+  int x = cellRect(MeterType::Numeric, cell).x;
+  int y = cellRect(MeterType::Numeric, cell).y;
+  const char* label = pidTable[pid].label;
   tft.drawRect(x, y, w, screenHeight, TFT_GREY);
   tft.fillRect(x + 2, y + 2, w - 5, h - 5, TFT_BLACK);
   tft.fillRectVGradient(x + 2, y + 2, w - 5, h * 0.33,TFT_BLUE ,0x0011);
@@ -59,8 +45,8 @@ void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
   if (isWarning(data, warn)) {
     int w = screenWidth / 2 - 1;
     int h = screenHeight / 3 - 1;
-    int x = cell1_x[cell - 1];
-    int y = cell1_y[cell - 1];
+    int x = cellRect(MeterType::Numeric, cell).x;
+    int y = cellRect(MeterType::Numeric, cell).y;
     if (blinkCell[cell]) {//show
       String result = String(data, digit);
       switch (result.length()) {
@@ -82,8 +68,8 @@ void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
     if (data != old_data[pidIndex]) {//if value change then redraw new data
      int w = screenWidth / 2 - 1;
      int h = screenHeight / 3 - 1;
-     int x = cell1_x[cell - 1];
-     int y = cell1_y[cell - 1];
+     int x = cellRect(MeterType::Numeric, cell).x;
+     int y = cellRect(MeterType::Numeric, cell).y;
 
     String result = String(data, digit);
     switch (result.length()) {
@@ -108,21 +94,20 @@ cell
 void arcMeter(uint8_t cell, uint8_t pid) {
   int w = screenWidth / 2;
   int h = screenHeight / 3;
-  int x = cell1_x[cell - 1];
-  int y = cell1_y[cell - 1];
-  // Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit }
-  String label = pidConfig[pid][0];     //get PID to label
-  String unit = pidConfig[pid][1];      //get PID to unit
-  int min = pidConfig[pid][4].toInt();  //get PID to min
-  int max = pidConfig[pid][5].toInt();  //get PID to max
+  int x = cellRect(MeterType::Arc, cell).x;
+  int y = cellRect(MeterType::Arc, cell).y;
+  const char* label = pidTable[pid].label;
+  const char* unit = pidTable[pid].unit;
+  int min = pidTable[pid].minValue;
+  int max = pidTable[pid].maxValue;
   // Meter outline
   tft.fillRect(x, y, w, h, TFT_GREY);
   tft.fillRect(x + 2, y + 2, 156, 76, TFT_BLACK);
   tft.setTextColor(TFT_WHITE);  // Text colour
   tft.drawCentreString(String(min).c_str(), x + 16, y + 10, 2);
   tft.drawCentreString(String(max).c_str(), x + w - 16, y + 10, 2);
-  tft.drawRightString(unit.c_str(), x + 150, y + 60, 2);   // Units at bottom right
-  tft.drawCentreString(label.c_str(), x + 80, y + 58, 2);  // Comment out to avoid font 4
+  tft.drawRightString(unit, x + 150, y + 60, 2);   // Units at bottom right
+  tft.drawCentreString(label, x + 80, y + 58, 2);  // Comment out to avoid font 4
   tft.setTextColor(TFT_GREEN);
   tft.drawString("---", x + 10, y + 60, 2);  // data
   //draw arc animation
@@ -134,12 +119,10 @@ void arcMeter(uint8_t cell, uint8_t pid) {
   }
 }
 // #########################################################################
-void plotArc(uint8_t cell, String label, float data, int warn, int min, int max, bool digit) {
+void plotArc(uint8_t cell, float data, int warn, int min, int max, bool digit) {
 if (data != old_data[pidIndex]) {
-  //int w = screenWidth / 2 - 1;
-  //int h = screenHeight / 3 - 1;
-  int x = cell1_x[cell - 1];
-  int y = cell1_y[cell - 1];
+  int x = cellRect(MeterType::Arc, cell).x;
+  int y = cellRect(MeterType::Arc, cell).y;
 
   String result = String(data, digit);
   switch (result.length()) {
@@ -169,13 +152,11 @@ draw linear vertical meter 80x240 px
 cell  1 , 2 , 3 , 4 */
 //vertical meter cell 1 to 4 full screen height
 void vBarMeter(uint8_t cell, uint8_t pid) {
-  int x = cell2_x[cell - 1];  //start origin
+  int x = cellRect(MeterType::VBar, cell).x;  //start origin
   int w = screenWidth / 4;
-  // Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit }
-  String label = pidConfig[pid][0];     //get PID to label
-  String unit = pidConfig[pid][1];      //get PID to unit
-  //int min = pidConfig[pid][4].toInt();  //get PID to min
-  int max = pidConfig[pid][5].toInt();  //get PID to max
+  const char* label = pidTable[pid].label;
+  const char* unit = pidTable[pid].unit;
+  int max = pidTable[pid].maxValue;
   tft.drawRect(x, 0, w, screenHeight, TFT_DARKGREY);
   tft.fillRectVGradient(x + 2, 2, w - 3, screenHeight * 0.12 - 10, TFT_BLUE, 0x0011);
   tft.fillRect(x + 2, screenHeight * 0.12, w - 3, screenHeight - screenHeight * 0.24, TFT_BLACK);
@@ -212,7 +193,7 @@ void vBarMeter(uint8_t cell, uint8_t pid) {
 //vertical meter cell 1 to 4 full screen height
 void plotVBar(uint8_t cell, float data, int warn, int min, int max, bool digit) {  //cell 1-4
 if (data != old_data[pidIndex]) {//if value change then redraw new data
-  int x = cell2_x[cell - 1];
+  int x = cellRect(MeterType::VBar, cell).x;
   int w = screenWidth / 4;
   if (data < min) data = min;
   if (data > max) data = max;
@@ -238,135 +219,30 @@ if (data != old_data[pidIndex]) {//if value change then redraw new data
 /*-------------------*/
 //initialize dislay by layout choose
 void initScreen() {
-  //String  pidList[6] = {"0105","0142","015C","010B","221E1C","010C"};
-  // Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit }
-  #ifdef SERIAL_DEBUG    
+  #ifdef SERIAL_DEBUG
   Serial.printf("Display layout -> %d\n",layout);
   #endif
-  for (int i = 0; i < 7; i++) {
-    pidList[i] = pidConfig[pidInCell[layout][i]][2];                 //get PID to list
-    pidReadSkip[i] = pidConfig[pidInCell[layout][i]][6].toInt();     //get read skip
-    pidCurrentSkip[i] = pidReadSkip[i];  //skip for skip reading pid
-    old_data[i] = 0;//clear old data
+  for (uint8_t slot = 0; slot < kSlotCount; slot++) {
+    const PidInfo& pid = pidTable[layoutTable[layout][slot].pid];
+    pidList[slot] = pid.code;
+    pidReadSkip[slot] = pid.skip;
+    pidCurrentSkip[slot] = pidReadSkip[slot];  //skip for skip reading pid
+    old_data[slot] = 0;//clear old data
   }
   tft.fillScreen(TFT_BLACK);  //clear screen
-  switch (layout) {
-    case 0:
-      {                                    //6 meter
-                                           /*page 0
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        arcMeter(1, pidInCell[0][0]);  //cell,pid05
-        arcMeter(2, pidInCell[0][1]);
-        arcMeter(3, pidInCell[0][2]);
-        numericMeter(7, pidInCell[0][3]);
-        numericMeter(8, pidInCell[0][4]);
-        numericMeter(9, pidInCell[0][5]);
-      }
-      break;
-     case 1:
-      {                                    //6 meter
-                                           /*page 1
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        arcMeter(1, pidInCell[1][0]);  //cell,pid05
-        arcMeter(2, pidInCell[1][1]);
-        arcMeter(3, pidInCell[1][2]);
-        arcMeter(7, pidInCell[1][3]);  //cell,pid05
-        arcMeter(8, pidInCell[1][4]);
-        arcMeter(9, pidInCell[1][5]);
-      }
-      break;  
-   case 2:
-      {                                    //6 meter
-                                           /*page 2
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        numericMeter(1, pidInCell[2][0]);
-        numericMeter(2, pidInCell[2][1]);
-        numericMeter(3, pidInCell[2][2]);
-        numericMeter(7, pidInCell[2][3]);
-        numericMeter(8, pidInCell[2][4]);
-        numericMeter(9, pidInCell[2][5]);
-      }
-      break;      
-    case 3:
-      {  //5 meter
-         /*page 3
-    █ 1 █  █  █ 
-    █ 2 █  3  4 
-    █ 3 █  █  █ */
-        numericMeter(1, pidInCell[3][0]);
-        numericMeter(2, pidInCell[3][1]);
-        numericMeter(3, pidInCell[3][2]);
-        vBarMeter(3, pidInCell[3][3]);
-        vBarMeter(4, pidInCell[3][4]);
-      }
-      break;
-    case 4:
-      {  //5 meter
-         /*page 4
-  █  █ 4 █  █ 
-  1  █ 5 █  4
-  █  █ 6 █  █ */
-        vBarMeter(1, pidInCell[4][0]);
-        numericMeter(4, pidInCell[4][1]);
-        numericMeter(5, pidInCell[4][2]);
-        numericMeter(6, pidInCell[4][3]);
-        vBarMeter(4, pidInCell[4][4]);
-      }
-      break;
-    case 5:
-      {  //5 meter
-         /*page 3
-    █  █  █ 7 █
-    1  2  █ 8 █
-    █  █  █ 9 █ */
-
-        vBarMeter(1, pidInCell[5][0]);
-        vBarMeter(2, pidInCell[5][1]);
-        numericMeter(7, pidInCell[5][2]);
-        numericMeter(8, pidInCell[5][3]);
-        numericMeter(9, pidInCell[5][4]);
-      }
-      break;
-    case 6:
-      {  //4 meter
-         /*  page 4
-    █  █  █  █
-    1  2  3  4
-    █  █  █  █  */
-        vBarMeter(1, pidInCell[6][0]);
-        vBarMeter(2, pidInCell[6][1]);
-        vBarMeter(3, pidInCell[6][2]);
-        vBarMeter(4, pidInCell[6][3]);
-      }
-      break;
-    case 7:
-      {  //5 meter
-         /*  page 5
-    █  █  █  █
-    1  2  3  4
-    █  █  █  █  */
-        vBarMeter(1, pidInCell[7][0]);
-        vBarMeter(2, pidInCell[7][1]);
-        vBarMeter(3, pidInCell[7][2]);
-        vBarMeter(4, pidInCell[7][3]);
-      }
-      break;  
-  }  //switch page
-
+  for (uint8_t slot = 0; slot < kSlotCount; slot++) {
+    const SlotPlan& plan = layoutTable[layout][slot];
+    switch (plan.meter) {
+      case MeterType::Numeric: numericMeter(plan.cell, plan.pid); break;
+      case MeterType::Arc: arcMeter(plan.cell, plan.pid); break;
+      case MeterType::VBar: vBarMeter(plan.cell, plan.pid); break;
+      case MeterType::None: break;
+    }
+  }
 }  //initscreen
 /*-------------------------------*/
 //check engine status if off then turn off gauge
-void engine_onoff(float data, uint8_t pid) {  //use pcm volt
-//check if pid is 010C eng speed and value = 0
-//String t = pidList[pid] + " - " + (String)value;
-if (pidList[pid] == "0142") { //pis = 010C engine speed RPM
-
+void engine_onoff(float data) {  //use pcm volt
   int compare = ecu_off_volt/data;
   if (compare > 0)  //check lower voltage
     engine_off_count++;
@@ -396,162 +272,23 @@ if (pidList[pid] == "0142") { //pis = 010C engine speed RPM
     esp_deep_sleep_start();//sleep shutdown backlight auto off with esp32
 
     }//if engine_off_count>20
-  }//if PID = "010C"
 }
 /*-------------------------------*/
-//coolant volt oiltemp vaporpressure TFT Load
-// {"01051","01421","015C1","01321","221E1C1","01041"};
-void updateMeter(uint8_t pidNo, String response) {  //update parameter on screen
-  // Array data -> { Label , unit, pid, fomula, min, max, ,skip, digit }
-  String label = pidConfig[pidInCell[layout][pidNo]][0];
-  //String unit = pidConfig[pidInCell[layout][pidNo]][1];
-  uint8_t formula = pidConfig[pidInCell[layout][pidNo]][3].toInt();
-  int min = pidConfig[pidInCell[layout][pidNo]][4].toInt();
-  int max = pidConfig[pidInCell[layout][pidNo]][5].toInt();
-  bool digit = pidConfig[pidInCell[layout][pidNo]][7].toInt();
-  int warn = warningValue[pidInCell[layout][pidNo]].toInt();
+void updateMeter(uint8_t slot, String response) {  //update parameter on screen
+  const SlotPlan& plan = layoutTable[layout][slot];
+  const PidInfo& pid = pidTable[plan.pid];
+  int warn = warningValue[plan.pid].toInt();
 
-  decodeBytes(response.c_str(), pidList[pidNo].c_str(), &A, &B);
-  float data = toReading((Formula)formula, A, B, old_data[pidIndex]);
+  decodeBytes(response.c_str(), pid.code, &A, &B);
+  float data = toReading(pid.formula, A, B, old_data[pidIndex]);
 
-  switch (layout) {
-    case 0:
-      {  //6 meter
-         /*page 0
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        switch (pidNo) {
-          case 0: plotArc(1, label, data, warn, min, max, digit); break;
-          case 1: plotArc(2, label, data, warn, min, max, digit); break;
-          case 2: plotArc(3, label, data, warn, min, max, digit); break;
-          case 3: plotNumeric(7, data, warn, digit); break;
-          case 4: plotNumeric(8, data, warn, digit); break;
-          case 5: plotNumeric(9, data, warn, digit); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 0
-      break;
-     case 1:
-      {  //6 meter
-         /*page 1
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        switch (pidNo) {
-          case 0: plotArc(1, label, data, warn, min, max, digit); break;
-          case 1: plotArc(2, label, data, warn, min, max, digit); break;
-          case 2: plotArc(3, label, data, warn, min, max, digit); break;
-          case 3: plotArc(7, label, data, warn, min, max, digit); break;
-          case 4: plotArc(8, label, data, warn, min, max, digit); break;
-          case 5: plotArc(9, label, data, warn, min, max, digit); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 1
-      break;
-     case 2:
-      {  //6 meter
-         /*page 2
-    █ 1 █ █ 7 █ 
-    █ 2 █ █ 8 █ 
-    █ 3 █ █ 9 █ */
-        switch (pidNo) {
-          case 0: plotNumeric(1, data, warn, digit); break;
-          case 1: plotNumeric(2, data, warn, digit); break;
-          case 2: plotNumeric(3, data, warn, digit); break;
-          case 3: plotNumeric(7, data, warn, digit); break;
-          case 4: plotNumeric(8, data, warn, digit); break;
-          case 5: plotNumeric(9, data, warn, digit); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 2
-      break;    
-    case 3:
-      {  //5 meter
-         /*page 3
-    █ 1 █  █  █ 
-    █ 2 █  3  4 
-    █ 3 █  █  █ */
-        switch (pidNo) {
-          case 0: plotNumeric(1, data, warn, digit); break;
-          case 1: plotNumeric(2, data, warn, digit); break;
-          case 2: plotNumeric(3, data, warn, digit); break;
-          case 3: plotVBar(3, data, warn, min, max, digit); break;
-          case 4: plotVBar(4, data, warn,  min, max, digit); break;
-          case 5: engine_onoff(data, pidNo); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 3
-      break;
-    case 4:
-      {  //5 meter
-         /*page 4
-    █  █ 4 █  █ 
-    1  █ 5 █  4
-    █  █ 6 █  █ */
-        switch (pidNo) {
-          case 0: plotVBar(1, data, warn,  min, max, digit); break;
-          case 1: plotNumeric(4, data, warn, digit); break;
-          case 2: plotNumeric(5, data, warn, digit); break;
-          case 3: plotNumeric(6, data, warn, digit); break;
-          case 4: plotVBar(4, data, warn,  min, max, digit); break;
-          case 5: engine_onoff(data, pidNo); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 4
-      break;
-    case 5:
-      {  //5 meter
-         /*page 5
-    █  █  █ 7 █
-    1  2  █ 8 █
-    █  █  █ 9 █ */
-        switch (pidNo) {
-          case 0: plotVBar(1, data, warn,  min, max, digit); break;
-          case 1: plotVBar(2, data, warn,  min, max, digit); break;
-          case 2: plotNumeric(7, data, warn, digit); break;
-          case 3: plotNumeric(8, data, warn, digit); break;
-          case 4: plotNumeric(9, data, warn, digit); break;
-          case 5: engine_onoff(data, pidNo); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 5
-      break;
-    case 6:
-      {  //4 meter
-         /*  page 6
-    █  █  █  █
-    1  2  3  4
-    █  █  █  █  */
-        switch (pidNo) {
-          case 0: plotVBar(1, data, warn,  min, max, digit); break;
-          case 1: plotVBar(2, data, warn,  min, max, digit); break;
-          case 2: plotVBar(3, data, warn,  min, max, digit); break;
-          case 3: plotVBar(4, data, warn,  min, max, digit); break;
-          case 4: engine_onoff(data, pidNo); break;
-          case 5: engine_onoff(data, pidNo); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 6
-      break;
-    case 7:
-      {  //5 meter
-         /*  page 7
-    █  █  █  █
-    1  2  3  4
-    █  █  █  █  */
-        switch (pidNo) {
-          case 0: plotVBar(1, data, warn,  min, max, digit); break;
-          case 1: plotVBar(2, data, warn,  min, max, digit); break;
-          case 2: plotVBar(3, data, warn,  min, max, digit); break;
-          case 3: plotVBar(4, data, warn,  min, max, digit); break;
-          case 4: engine_onoff(data, pidNo); break;
-          case 5: engine_onoff(data, pidNo); break;
-          case 6: engine_onoff(data, pidNo); break;
-        }
-      }  //case 7
-      break;  
-  }                 //switch page
+  switch (plan.meter) {
+    case MeterType::Numeric: plotNumeric(plan.cell, data, warn, pid.showDecimal); break;
+    case MeterType::Arc: plotArc(plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
+    case MeterType::VBar: plotVBar(plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
+    case MeterType::None: break;
+  }
+  if (countsTowardAutoOff(layout, slot)) engine_onoff(data);
   bt_message = "";  //reset
 }  //updatemeter
 /*-------------------------------*/

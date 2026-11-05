@@ -2,7 +2,7 @@
 
 A fork of [VaAndCob/ESP32-Bluetooth-OBD2-Gauge](https://github.com/VaAndCob/ESP32-Bluetooth-OBD2-Gauge), the ESP32 OBD2 gauge created by Ratthanin W. (Va&Cob). The gauge's design, features, hardware and enclosure are their work. The original project was last updated on September 27th, 2024. Its repository was archived on October 24th, 2025 and is no longer maintained.
 
-> **Not yet tested on a device.** This fork's changes pass their automated tests and compile for both Ford variants, but they haven't run on a gauge or in a car yet. For the original author's release, see [Original firmware](#original-firmware).
+> **Work in progress, not yet tested on a device.** This fork's firmware restructuring is still under way. Its changes pass their automated tests and compile for both Ford variants, but they haven't run on a gauge or in a car yet. For the original author's release, see [Original firmware](#original-firmware).
 
 This is an ESP32 OBD2 Gauge for vehicles that are compatible with OBD2
 (Special made for FORD vehicle)
@@ -30,9 +30,9 @@ The gauge is meant to look and work as it did, apart from the fixes below. Saved
 - **Meters:** a reply meant for another PID was drawn as the current one, and an empty reply reused old bytes. The meter now keeps its last value.
 - **Auto-off:** layouts 3 and 5 shut down in about half the time of the others. Every layout now counts PCM volts once per round.
 
-### Code structure
+### Code structure (work in progress)
 
-Reply decoding, the PID and layout tables, the ELM327 connection, button gestures, saved settings and the shutdown decisions now live in separate modules with no Arduino dependencies, so their tests run on a computer with no hardware attached:
+The restructuring isn't finished, so expect more of the firmware to move. So far, reply decoding, the PID and layout tables, the ELM327 connection, button gestures, saved settings and the shutdown decisions now live in separate modules with no Arduino dependencies, so their tests run on a computer with no hardware attached:
 
 ```sh
 make -C test

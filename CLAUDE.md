@@ -106,7 +106,7 @@ Both shutdown paths use deep sleep, and waking re-runs `setup()` from scratch:
 
 ### Persistent state
 
-- **NVS namespace `setting`**, opened in `setup()` and left open: `layout` (saved only at auto-off), `showsystem`, `tempOffset`, `ecu_off_volt`, `recent_client`, and one warning value per PID keyed by its `settingKey` in `pidTable`. Changing a key orphans the saved value, and keys must stay within NVS's 15-character limit.
+- **NVS namespace `setting`**, owned by `GaugeSettings` (the global `settings`), with a `SettingsStore` adapter over Preferences: `layout` (saved only at auto-off), `showsystem`, `tempOffset`, `ecu_off_volt`, `recent_client`, and one warning value per PID keyed by its `settingKey` in `pidTable`. Changing a key orphans the saved value, and keys must stay within NVS's 15-character limit.
 - **NVS namespace `security`**: `serialno`, read by `checkGenuine()`. The call is commented out at `.ino:342`.
 - **SPIFFS**: `/TouchCalData1`, `/mypic.jpg` (copied from SD by the menu), `/vaandcob.jpg`. `firmware/partitions.bin` gives SPIFFS 128 KB, despite the scheme's 190 KB label.
 

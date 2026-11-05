@@ -11,9 +11,6 @@ float old_data[kSlotCount] = {};//keep old data for each gauge to improve speed 
 uint8_t low_count = 0;
 uint8_t high_count = 0; 
 
-const float factoryECUOff = 12.5;//default off voltage
-float ecu_off_volt = factoryECUOff;//turn engine off if voltage lower than 12.4
-
 /* ####################################
  draw digital numeric meter  160x80 px
 ####################################
@@ -217,12 +214,12 @@ if (data != old_data[slot]) {//if value change then redraw new data
 //initialize dislay by layout choose
 void initScreen() {
   #ifdef SERIAL_DEBUG
-  Serial.printf("Display layout -> %d\n",layout);
+  Serial.printf("Display layout -> %d\n",settings.layout);
   #endif
   const char* codes[kSlotCount];
   uint8_t skips[kSlotCount];
   for (uint8_t slot = 0; slot < kSlotCount; slot++) {
-    const PidInfo& pid = pidTable[layoutTable[layout][slot].pid];
+    const PidInfo& pid = pidTable[layoutTable[settings.layout][slot].pid];
     codes[slot] = pid.code;
     skips[slot] = pid.skip;
     old_data[slot] = 0;//clear old data
@@ -230,7 +227,7 @@ void initScreen() {
   elm.setRequests(codes, skips, kSlotCount);
   tft.fillScreen(TFT_BLACK);  //clear screen
   for (uint8_t slot = 0; slot < kSlotCount; slot++) {
-    const SlotPlan& plan = layoutTable[layout][slot];
+    const SlotPlan& plan = layoutTable[settings.layout][slot];
     switch (plan.meter) {
       case MeterType::Numeric: numericMeter(plan.cell, plan.pid); break;
       case MeterType::Arc: arcMeter(plan.cell, plan.pid); break;
@@ -242,15 +239,13 @@ void initScreen() {
 /*-------------------------------*/
 //check engine status if off then turn off gauge
 void engine_onoff(float data) {  //use pcm volt
-  int compare = ecu_off_volt/data;
+  int compare = settings.ecuOffVolt/data;
   if (compare > 0)  //check lower voltage
     engine_off_count++;
   else
     engine_off_count = 0;  //reset
   if (engine_off_count > 20) {  //engine is stop
-    if(pref.getUShort("layout",false) != layout) {//if current layout not NVR load layout
-      pref.putUShort("layout", layout);//save current layout to NVR
-    }      
+    settings.saveLayout();
     show_spiffs_jpeg_image("/mypic.jpg", 0, 0);//show mypic
     ledcWriteTone(buzzerChannel,3136);
     delay(100);
@@ -274,9 +269,9 @@ void engine_onoff(float data) {  //use pcm volt
 }
 /*-------------------------------*/
 void updateMeter(uint8_t slot, const char* reply) {  //update parameter on screen
-  const SlotPlan& plan = layoutTable[layout][slot];
+  const SlotPlan& plan = layoutTable[settings.layout][slot];
   const PidInfo& pid = pidTable[plan.pid];
-  int warn = warningValue[plan.pid].toInt();
+  int warn = settings.warning[plan.pid];
 
   decodeBytes(reply, pid.code, &A, &B);
   float data = toReading(pid.formula, A, B, old_data[slot]);
@@ -287,7 +282,7 @@ void updateMeter(uint8_t slot, const char* reply) {  //update parameter on scree
     case MeterType::VBar: plotVBar(slot, plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
     case MeterType::None: break;
   }
-  if (countsTowardAutoOff(layout, slot)) engine_onoff(data);
+  if (countsTowardAutoOff(settings.layout, slot)) engine_onoff(data);
 }  //updatemeter
 /*-------------------------------*/
 

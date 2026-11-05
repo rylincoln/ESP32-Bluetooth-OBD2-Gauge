@@ -97,10 +97,7 @@ void scanBTdevice() {//scan bluetooth device
           str = str.substring(index+1);
         }
       }//while mac address copied to client_addr for connect below code
-      if (ByteArraytoString(client_addr) != ByteArraytoString(recent_client_addr)) {
-        pref.putBytes("recent_client",client_addr,sizeof(client_addr));//save new bt addr to pref.
-        Serial.println(F("Save a new BT client address"));
-      }
+      if (settings.saveRecentClient(client_addr)) Serial.println(F("Save a new BT client address"));
     } else //not match
        foundOBD2 = false;
  
@@ -138,10 +135,10 @@ void scanBTdevice() {//scan bluetooth device
 //connect to recent obdII for fast connection, skip scanning
 void connectLastOBDII() {
   digitalWrite(LED_BLUE_PIN,LOW);//blue led on  
-  String txt = "Connecting to " + client_name +" - " + ByteArraytoString(recent_client_addr);
+  String txt = "Connecting to " + client_name +" - " + ByteArraytoString(settings.recentClient);
   Terminal(txt,0,48,320,191);
   Serial.println(txt);
-  BTSerial.connect(recent_client_addr, 0, sec_mask, role);//connect to OBDII adaptor
+  BTSerial.connect(settings.recentClient, 0, sec_mask, role);//connect to OBDII adaptor
   uint8_t try_count = 0;
   bool blink = false;
   while(!BTSerial.connected(1000) && (try_count <3)) {

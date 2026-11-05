@@ -172,8 +172,8 @@ void setWarning(int8_t index, int8_t change) {
        tft.drawRightString(pidTable[i-1].menuUnit,319,57+(i*16),2);//unit
      }
      String result = "";
-     if (i == 0)  result = String(tempOffset);
-     else result = warningValue[i-1];
+     if (i == 0)  result = String(settings.tempOffset);
+     else result = String(settings.warning[i-1]);
       switch (result.length()) {//remove indent
       case 1: result = "   " + result; break;  
       case 2: result = "  " + result; break;
@@ -188,14 +188,14 @@ void setWarning(int8_t index, int8_t change) {
       int min = -99;//min temp offset
       int max = 0;//max temp offset
       if (change == -1) {//decrease
-        tempOffset = tempOffset - 1;
-        if (tempOffset < min) tempOffset = min;          
+        settings.tempOffset = settings.tempOffset - 1;
+        if (settings.tempOffset < min) settings.tempOffset = min;          
       }
       if (change == 1) {//incrase
-        tempOffset = tempOffset + 1;
-        if (tempOffset > max) tempOffset = max;
+        settings.tempOffset = settings.tempOffset + 1;
+        if (settings.tempOffset > max) settings.tempOffset = max;
       }
-      String result = String(tempOffset);
+      String result = String(settings.tempOffset);
       switch (result.length()) {
       case 1: result = "   " + result; break;  
       case 2: result = "  " + result; break;
@@ -208,14 +208,14 @@ void setWarning(int8_t index, int8_t change) {
       int max = pidTable[index-1].maxValue;//get max
       int step = pidTable[index-1].warningStep;
       if (change == -1) {//decrease  
-        warningValue[index-1] = String(warningValue[index-1].toInt() - step);
-        if (warningValue[index-1].toInt() < min) warningValue[index-1] = String(min);          
+        settings.warning[index-1] -= step;
+        if (settings.warning[index-1] < min) settings.warning[index-1] = min;
       }
       if (change == 1) {//increase
-       warningValue[index-1] = String(warningValue[index-1].toInt() + step);
-        if (warningValue[index-1].toInt() > max) warningValue[index-1] = String(max);
+       settings.warning[index-1] += step;
+        if (settings.warning[index-1] > max) settings.warning[index-1] = max;
       }
-      String result = warningValue[index-1];
+      String result = String(settings.warning[index-1]);
       switch (result.length()) {
       case 1: result = "   " + result; break;   
       case 2: result = "  " + result; break;
@@ -283,7 +283,7 @@ void loadMyPic() {
 
 void listMenu(uint8_t choice) {
   //draw icon
-  if (showsystem) tft.pushImage(0,35,25,25,switchon);//switchon image
+  if (settings.showSystem) tft.pushImage(0,35,25,25,switchon);//switchon image
   else tft.pushImage(0,35,25,25,switchoff);//switchon image
   tft.pushImage(0,65,25,25,image);//image
   tft.pushImage(0,95,25,25,cpu);//firmware
@@ -309,7 +309,6 @@ void listMenu(uint8_t choice) {
 void configMenu() {//control configuration menu
   uint8_t select = 0;
   ButtonGesture button;
-  bool currentFlag = showsystem;//keep current flag status  
     beep();
     tft.fillScreen(TFT_BLACK);//clear screen
     tft.fillRectVGradient(0, 0, 320, 26, TFT_ORANGE, 0xfc00);
@@ -325,9 +324,9 @@ void configMenu() {//control configuration menu
 //----------  TOGGLE SHOW SYSTEM STATUS  -----------
           if (select == 0) {
             beepbeep();
-            showsystem = !showsystem;//toggle      
+            settings.showSystem = !settings.showSystem;//toggle      
             tft.setTextColor(TFT_WHITE,TFT_BLUE);
-            if (showsystem) tft.pushImage(0,35,25,25,switchon);//switchon image
+            if (settings.showSystem) tft.pushImage(0,35,25,25,switchon);//switchon image
             else tft.pushImage(0,35,25,25,switchoff);//switchon image
          
           } 
@@ -420,9 +419,7 @@ void configMenu() {//control configuration menu
                 Serial.printf("%d - %d\n",t_x,t_y);
                 #endif
                 if (t_x < 64) {//DEFAULT
-                  tempOffset = factoryTempOffset;//load default
-                 //read default warning value
-                  for (uint8_t i=0;i < kPidCount; i++) warningValue[i] = String(pidTable[i].defaultWarning);
+                  settings.restoreDefaultWarnings();
                 }
                 if ((t_x >= 64) && (t_x <128)) warningMenuIndex--;//prev
                 if ((t_x >= 128) && (t_x <192)) warningMenuIndex++;//next
@@ -437,10 +434,7 @@ void configMenu() {//control configuration menu
               }//if touched
             }//while 
            //exit and save warning data to preference
-          pref.putInt("tempOffset",tempOffset);//save tempoffset
-          for (uint8_t i=0;i < kPidCount; i++) {//save all pid
-            pref.putString(pidTable[i].settingKey,warningValue[i]);          
-          }          
+          settings.saveWarnings();
           tft.setTextColor(TFT_BLACK,TFT_GREEN);
           tft.drawCentreString("Parameters Saved.",159,120,4); 
           beep();
@@ -597,7 +591,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
            tft.fillRect(286,219,3,16,TFT_WHITE);//+
            tft.fillRect(280,225,16,3,TFT_WHITE);//+   
            tft.setTextColor(TFT_YELLOW,TFT_BLACK);
-           String result = String(ecu_off_volt, 1);
+           String result = String(settings.ecuOffVolt, 1);
            tft.drawCentreString(result.c_str(),159,135,4);
            delay(1000);
            while (screenWaiting()) {//wait for button press to exit
@@ -609,24 +603,24 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
               Serial.printf("%d - %d\n",t_x,t_y);
               #endif
               if (t_x < 64) {//DEFAULT
-                ecu_off_volt = factoryECUOff;
+                settings.restoreDefaultEcuOffVolt();
               }
 
               if ((t_x >= 192) && (t_x <256)) {//decrease
-                ecu_off_volt = ecu_off_volt - 0.1;
-                if (ecu_off_volt <= 11.0) ecu_off_volt = 11.0; 
+                settings.ecuOffVolt = settings.ecuOffVolt - 0.1;
+                if (settings.ecuOffVolt <= 11.0) settings.ecuOffVolt = 11.0; 
               }
               if ((t_x >= 256) && (t_x <320)) {//increase
-                ecu_off_volt = ecu_off_volt + 0.1; 
-                if (ecu_off_volt >= 15.0) ecu_off_volt = 15.0; 
+                settings.ecuOffVolt = settings.ecuOffVolt + 0.1; 
+                if (settings.ecuOffVolt >= 15.0) settings.ecuOffVolt = 15.0; 
               }
-              String result = String(ecu_off_volt, 1);
+              String result = String(settings.ecuOffVolt, 1);
               tft.drawCentreString(result.c_str(),159,135,4);
               delay(300);//touch screen delay
             }//if touched
            }//while 
            //exit and save warning data to preference
-           pref.putFloat("ecu_off_volt",ecu_off_volt);//save ecu_off_volt
+           settings.saveEcuOffVolt();
        
           tft.setTextColor(TFT_BLACK,TFT_GREEN);
           tft.drawCentreString("Parameters Saved.",159,120,4); 
@@ -662,9 +656,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
 //---------------------EXIT-----------
           if (select == 7) {
             clickSound();
-            if (showsystem != currentFlag) {//save to eeprom only when flag changed
-             pref.putBool("showsystem", showsystem);//save to NVR
-            }            
+            settings.saveShowSystem();
             break;//exist main config menu loop while
           }//select = 7              
            elm.requestStep();//to trig reading elm again

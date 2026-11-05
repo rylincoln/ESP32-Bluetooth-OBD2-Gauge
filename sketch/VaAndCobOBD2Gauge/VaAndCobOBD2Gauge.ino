@@ -47,6 +47,8 @@ Preferences pref;         //create preference
 #include "gauge_tables.h"  //the PIDs and layouts
 #include "elm327_link.h"  //the connection to the ELM327 adapter
 #include "button_gesture.h"  //tap and hold
+#include "gauge_settings.h"  //what the gauge remembers across power-offs
+#include "preferences_store.h"
 
 
 //Pin configuration
@@ -68,12 +70,11 @@ TFT_eSPI tft = TFT_eSPI();
 #define TFT_GREY 0x5AEB
 
 
-//hold warning value
-String warningValue[kPidCount];
+PreferencesStore settingsStore(pref);
+GaugeSettings settings(settingsStore);
 
 /*---------------------------*/
 //if NO DATA value will set to 0 to skip reading
-uint8_t layout = 0;                                   //current layout, saved in NVS
 uint8_t A = 0;                                        //get A
 uint8_t B = 0;                                        //get B
 
@@ -85,15 +86,12 @@ const uint8_t LIGHT_LEVEL = 40;                                        //backlig
 long runtime = 0;                                                      //to check FPS
 const String compile_date = __DATE__ " - " __TIME__;                   //get built date and time
 ButtonGesture mainButton;                                              //the button on the meter and scan screens
-bool showsystem = false;                                               //show fps and temp EEPROM 0x01
 uint8_t pidRead = 0;                                                   //counter that hold number of pids been read to check pid/sec
 String serial_no = "";                                                 //keep serial no.
 
 //CPU Temp
 const uint8_t tempOverheat = 60;       //max operating cpu temp 60c
-const int8_t factoryTempOffset = -50;  //default offset adjustment temp up to each tested esp32 max at -50
 float tempRead = 0.0;                  //current reading cpu temp
-int8_t tempOffset = 0;                 //offset adjustment temp up to each tested esp32
 uint8_t temp_read_delay = 0;           //hold delay counter to read temp
 uint8_t temp_overheat_count = 0;       //counter to read continuiosly overheat
 
@@ -104,7 +102,6 @@ String deviceAddr[8] = { "", "", "", "", "", "", "", "" };                  //di
 uint8_t btDeviceCount = 0;                                                  //discovered bluetooth devices counter
 #define BT_DISCOVER_TIME 5000                                               //bluetooth discoery time
 esp_bd_addr_t client_addr = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };         //obdII mac addr
-esp_bd_addr_t recent_client_addr = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };  //keep last btaddr in RTC memory
 const String client_name = "OBDII";                                         //adaptor name to search
 esp_spp_sec_t sec_mask = ESP_SPP_SEC_NONE;                                  // or ESP_SPP_SEC_ENCRYPT|ESP_SPP_SEC_AUTHENTICATE to request pincode confirmation
 esp_spp_role_t role = ESP_SPP_ROLE_SLAVE;                                   // or ESP_SPP_ROLE_MASTER
@@ -123,7 +120,7 @@ void checkCPUTemp() {  //temperature can read only when BT or Wifi Connected
   if ((temp_read_delay >= 50) && (foundOBD2)) {  //delay loop 50 then read temp, avoid error eading
     temp_read_delay = 0;
     uint8_t temperature = temprature_sens_read();      //read internal temp sensor
-    tempRead = (temperature - 32) / 1.8 + tempOffset;  //change unit F to C
+    tempRead = (temperature - 32) / 1.8 + settings.tempOffset;  //change unit F to C
 #ifdef SERIAL_DEBUG
     Serial.print(tempRead, 1);  //print Celsius temperature and tab
     Serial.println("°c");
@@ -280,29 +277,11 @@ void setup() {
 
   // checkGenuine();//check guniune
   //init variable
-  pref.begin("setting", false);
-  /* Create a namespace called "setting" with read/write mode
-{ pref.get...(key,default)
-layout : UShort 
-showsystem: bool
-tempOffset : uint16_t
-warning value: uint16_t
-recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
-}*/
-  layout = pref.getUShort("layout", 0);  //load layout setting from NVR
-  if (layout > kLayoutCount) layout = 0;
-  showsystem = pref.getBool("showsystem", false);             //load showsytem
-  tempOffset = pref.getInt("tempOffset", factoryTempOffset);  //load defaultTempoffset
+  settings.load();
 #ifdef SERIAL_DEBUG
-  Serial.printf("Show System: %d\n", showsystem);
-  Serial.printf("Temp Offset: %d\n", tempOffset);
+  Serial.printf("Show System: %d\n", settings.showSystem);
+  Serial.printf("Temp Offset: %d\n", settings.tempOffset);
 #endif
-  for (uint8_t i = 0; i < kPidCount; i++) {  //read warning value if not found load from default
-    warningValue[i] = pref.getString(pidTable[i].settingKey, String(pidTable[i].defaultWarning));
-  }
-  pref.getBytes("recent_client", recent_client_addr, pref.getBytesLength("recent_client"));  //read last bt address
-  ecu_off_volt = pref.getFloat("ecu_off_volt", factoryECUOff);                               //read ecu 0ff voltage
-
 
   //start bluetooth
   if (!startBluetooth()) {
@@ -350,8 +329,8 @@ void loop() {
     configMenu();                 //open config menu
     if (foundOBD2) initScreen();  //open new layout screen
   } else if (buttonEvent == ButtonEvent::Tap) {  //change layout next page
-    layout++;                     //change to next layout page
-    if (layout == kLayoutCount) layout = 0;
+    settings.layout++;            //change to next layout page
+    if (settings.layout == kLayoutCount) settings.layout = 0;
     ledcWriteTone(buzzerChannel, 5000);  //play click sound
     delay(5);
     ledcWriteTone(buzzerChannel, 0);
@@ -393,7 +372,7 @@ void loop() {
       Serial.println(elm.reply());
 #endif
 #ifdef TERMINAL  //for degbugging
-      decodeBytes(elm.reply(), pidTable[layoutTable[layout][elm.slot()].pid].code, &A, &B);
+      decodeBytes(elm.reply(), pidTable[layoutTable[settings.layout][elm.slot()].pid].code, &A, &B);
       Terminal(String(elm.reply()) + "->" + String(A) + "," + String(B), 0, 48, 320, 191);
 #endif
     }
@@ -404,12 +383,12 @@ void loop() {
     }
     if (elm.advance()) {  //end of a round
       autoDim();          //auto backlight handle
-      if (showsystem) {
+      if (settings.showSystem) {
         String status = String(pidRead * 1000.0 / (millis() - runtime), 0) + " p/s " + String(tempRead, 1) + "`c";
         tft.setTextColor(TFT_YELLOW, TFT_BLACK);
         tft.drawCentreString(status.c_str(), 159, 0, 2);
         runtime = millis();
-      }             //if showsystem
+      }             //if settings.showSystem
       pidRead = 0;  //reset pid read counter
     }
   }  //if stepDue

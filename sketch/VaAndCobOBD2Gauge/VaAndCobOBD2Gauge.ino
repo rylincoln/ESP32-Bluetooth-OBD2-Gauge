@@ -94,8 +94,9 @@ float tempRead = 0.0;                  //current reading cpu temp
 
 //BLUETOOTH
 String se_message = "";                                                     //serial port message buffer
-String deviceName[8] = { "", "", "", "", "", "", "", "" };                  //discoveryBT name
-String deviceAddr[8] = { "", "", "", "", "", "", "", "" };                  //discover BT addr
+const uint8_t kMaxBtDevices = 8;                                            //the most a scan keeps
+String deviceName[kMaxBtDevices];                                           //discoveryBT name
+String deviceAddr[kMaxBtDevices];                                           //discover BT addr
 uint8_t btDeviceCount = 0;                                                  //discovered bluetooth devices counter
 #define BT_DISCOVER_TIME 5000                                               //bluetooth discoery time
 esp_bd_addr_t client_addr = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };         //obdII mac addr

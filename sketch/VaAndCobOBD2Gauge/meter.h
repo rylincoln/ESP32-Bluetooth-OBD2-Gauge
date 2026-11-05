@@ -40,7 +40,7 @@ void plotNumeric(uint8_t slot, uint8_t cell, float data, int warn, bool digit) {
     int h = screenHeight / 3 - 1;
     int x = cellRect(MeterType::Numeric, cell).x;
     int y = cellRect(MeterType::Numeric, cell).y;
-    if (blinkCell[cell]) {//show
+    if (blinkCell[cell - 1]) {//show
       String result = String(data, digit);
       switch (result.length()) {
         case 2: result = "    " + result; break;
@@ -54,7 +54,7 @@ void plotNumeric(uint8_t slot, uint8_t cell, float data, int warn, bool digit) {
     }  else {//hiding make blinking effect
       tft.fillRect(x + 2, y + 28, w - 5, 50, TFT_BLACK);//delete old number
     } 
-    blinkCell[cell] = !blinkCell[cell];
+    blinkCell[cell - 1] = !blinkCell[cell - 1];
   
   } else {//no warning
 

@@ -50,6 +50,7 @@ void scanBTdevice() {//scan bluetooth device
       // btDeviceList[pDevice->getAddress()] = * set;
     String txt = pDevice->toString().c_str();
     Serial.printf("Found a new device: %s\n", pDevice->toString().c_str());
+    if (btDeviceCount >= kMaxBtDevices) return;//a busy car park can find more than the list holds
     deviceName[btDeviceCount] = pDevice->getName().c_str();
     deviceAddr[btDeviceCount] = pDevice->getAddress().toString().c_str();
     btDeviceCount++; 

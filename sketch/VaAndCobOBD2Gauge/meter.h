@@ -241,8 +241,13 @@ void updateMeter(uint8_t slot, const char* reply) {  //update parameter on scree
   const PidInfo& pid = pidTable[plan.pid];
   int warn = settings.warning[plan.pid];
 
-  decodeBytes(reply, pid.code, &A, &B);
-  float data = toReading(pid.formula, A, B, old_data[slot]);
+  uint8_t a = 0;
+  uint8_t b = 0;
+  ReplyKind kind = decodeBytes(reply, pid.code, &a, &b);
+  //nothing new for this PID, so what's on screen stands. This can't fall back on old_data
+  //instead: a slot without a meter never stores one, and its 0 would count toward auto-off
+  if (kind == ReplyKind::Empty || kind == ReplyKind::OtherPid) return;
+  float data = toReading(pid.formula, a, b, old_data[slot]);
 
   switch (plan.meter) {
     case MeterType::Numeric: plotNumeric(slot, plan.cell, data, warn, pid.showDecimal); break;

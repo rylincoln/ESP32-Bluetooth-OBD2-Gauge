@@ -1,3 +1,4 @@
+#include "obd_reply.h"
 #include "shutdown_watch.h"
 #include "test.h"
 
@@ -48,6 +49,17 @@ TEST(auto_off_counts_zero_volts) {
   AutoOffWatch watch;
   for (int i = 0; i < 20; i++) watch.update(0.0f, kOffVolts);
   CHECK(watch.update(0.0f, kOffVolts));
+}
+
+TEST(a_silent_engine_computer_reaches_auto_off) {
+  // The whole path from a non-reply to the count, since auto-off depends on all of it.
+  uint8_t a = 0x5A;
+  uint8_t b = 0xA5;
+  CHECK(decodeBytes("NO DATA\r\r", "0142", &a, &b) == ReplyKind::NonReply);
+  float volts = toReading(Formula::Volts, a, b, 14.2f);
+  AutoOffWatch watch;
+  for (int i = 0; i < 20; i++) CHECK(!watch.update(volts, kOffVolts));
+  CHECK(watch.update(volts, kOffVolts));
 }
 
 TEST(auto_off_starts_over_after_one_good_reading) {

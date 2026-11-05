@@ -75,7 +75,7 @@ The `.ino` declares the globals, then includes `image.h` and `touchscreen.h`, de
 
 `Elm327Link` (the global `elm`) owns the adapter connection and keeps one request in flight. When `elm.stepDue()` says a `>` has arrived, `loop()` hands `elm.reply()` to `updateMeter()`, and `elm.advance()` sends the next PID. Each PID's `skip` count polls slow-moving values less often. Drawing shares this thread, so slow draws lower the poll rate. `BTSerial` only appears in `bluetooth.h`, which keeps scanning and connecting because they drive the screen and LEDs directly.
 
-`obd_reply` turns reply text into values. It depends on the setup commands in `elm327_link.cpp`: it splits replies on spaces and skips `pidCode` length / 2 bytes, which needs headers and echo off (`ATH0`, `ATE0`) with spaces left on. `initialise()` also treats that list positionally: it sends an extra CR after `ATBRD23` and waits 2 s after the last entry (`0100`).
+`obd_reply` turns reply text into values. It depends on the setup commands in `elm327_link.cpp`: it looks for the PID's header among whitespace-separated bytes, which needs headers off (`ATH0`) with spaces left on. `initialise()` also treats that list positionally: it sends an extra CR after `ATBRD23` and waits 2 s after the last entry (`0100`).
 
 The DTC and VIN screens use the blocking `elm.exchange()`, with decoding in `obd_reply`. Discovery matches the exact Bluetooth name `OBDII`, and the README recommends a v1.5 adapter over v2.1.
 

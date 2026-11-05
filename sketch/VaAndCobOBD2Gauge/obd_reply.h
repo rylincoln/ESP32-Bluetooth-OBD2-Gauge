@@ -17,13 +17,14 @@ enum class Formula : uint8_t {
 };
 
 enum class ReplyKind : uint8_t {
-  Value,  // *a and *b hold the decoded bytes
-  Empty,  // nothing to decode, so *a and *b were left alone
+  Value,     // *a and *b hold the decoded bytes
+  NonReply,  // no value in it, such as NO DATA; *a and *b are zero
+  OtherPid,  // a good reply, but to a different request; *a and *b were left alone
+  Empty,     // nothing to decode; *a and *b were left alone
 };
 
-// Finds the data bytes in a reply to pidCode. Text that holds no data bytes, such
-// as NO DATA, decodes as zero, which auto-off relies on: a silent engine computer
-// has to read as 0 volts.
+// Finds the data bytes in a reply to pidCode. A non-reply decodes as zero, which
+// auto-off relies on: a silent engine computer has to read as 0 volts.
 ReplyKind decodeBytes(const char* reply, const char* pidCode, uint8_t* a, uint8_t* b);
 
 // Works out a reading. The transmission formulas return previous when the result

@@ -25,7 +25,7 @@ $(eval $(call add_test,elm327_link,test_elm327_link.cpp $(SKETCH)/elm327_link.cp
 $(eval $(call add_test,button_gesture,test_button_gesture.cpp $(SKETCH)/button_gesture.cpp))
 $(eval $(call add_test,gauge_settings_t6,$(SETTINGS)))
 $(eval $(call add_test,gauge_settings_t5,$(SETTINGS),-DFORD_T5))
-$(eval $(call add_test,shutdown_watch,test_shutdown_watch.cpp $(SKETCH)/shutdown_watch.cpp))
+$(eval $(call add_test,shutdown_watch,test_shutdown_watch.cpp $(SKETCH)/shutdown_watch.cpp $(SKETCH)/obd_reply.cpp))
 
 .PHONY: all clean
 all: $(TESTS:%=run-%)

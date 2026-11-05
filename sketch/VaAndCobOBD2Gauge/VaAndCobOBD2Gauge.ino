@@ -74,11 +74,6 @@ TFT_eSPI tft = TFT_eSPI();
 PreferencesStore settingsStore(pref);
 GaugeSettings settings(settingsStore);
 
-/*---------------------------*/
-//if NO DATA value will set to 0 to skip reading
-uint8_t A = 0;                                        //get A
-uint8_t B = 0;                                        //get B
-
 //Global variable
 String line[12] = { "", "", "", "", "", "", "", "", "", "", "", "" };  //buffer for each line in terminal function
 bool dim = false;                                                      //back light dim flag
@@ -333,8 +328,10 @@ void loop() {
       Serial.println(elm.reply());
 #endif
 #ifdef TERMINAL  //for degbugging
-      decodeBytes(elm.reply(), pidTable[layoutTable[settings.layout][elm.slot()].pid].code, &A, &B);
-      Terminal(String(elm.reply()) + "->" + String(A) + "," + String(B), 0, 48, 320, 191);
+      uint8_t a = 0;
+      uint8_t b = 0;
+      decodeBytes(elm.reply(), pidTable[layoutTable[settings.layout][elm.slot()].pid].code, &a, &b);
+      Terminal(String(elm.reply()) + "->" + String(a) + "," + String(b), 0, 48, 320, 191);
 #endif
     }
     checkCPUTemp();  //check temperature.

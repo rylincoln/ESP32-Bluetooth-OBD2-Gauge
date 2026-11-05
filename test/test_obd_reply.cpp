@@ -31,12 +31,14 @@ TEST(one_byte_reply_gives_a_and_zero_b) {
 
 TEST(two_byte_reply_gives_a_and_b) {
   Bytes r = decode("41 0C 1A F8 \r\r", "010C");
+  CHECK(r.kind == ReplyKind::Value);
   CHECK_EQ(r.a, 0x1A);
   CHECK_EQ(r.b, 0xF8);
 }
 
 TEST(three_byte_pid_code_skips_three_echo_bytes) {
   Bytes r = decode("62 1E 1C 0A 3C \r\r", "221E1C");
+  CHECK(r.kind == ReplyKind::Value);
   CHECK_EQ(r.a, 0x0A);
   CHECK_EQ(r.b, 0x3C);
 }
@@ -49,19 +51,50 @@ TEST(reply_without_trailing_space_still_decodes) {
 
 TEST(no_data_decodes_as_zero) {
   Bytes r = decode("NO DATA\r\r", "0142");
-  CHECK(r.kind == ReplyKind::Value);
+  CHECK(r.kind == ReplyKind::NonReply);
   CHECK_EQ(r.a, 0);
   CHECK_EQ(r.b, 0);
 }
 
 TEST(can_error_decodes_as_zero) {
   Bytes r = decode("CAN ERROR\r\r", "0142");
+  CHECK(r.kind == ReplyKind::NonReply);
   CHECK_EQ(r.a, 0);
   CHECK_EQ(r.b, 0);
 }
 
 TEST(question_mark_decodes_as_zero) {
   Bytes r = decode("?\r\r", "0105");
+  CHECK(r.kind == ReplyKind::NonReply);
+  CHECK_EQ(r.a, 0);
+  CHECK_EQ(r.b, 0);
+}
+
+TEST(unable_to_connect_decodes_as_zero) {
+  // Reading the third word as hex used to turn the C of CONNECT into a data byte.
+  Bytes r = decode("UNABLE TO CONNECT\r\r", "0105");
+  CHECK(r.kind == ReplyKind::NonReply);
+  CHECK_EQ(r.a, 0);
+  CHECK_EQ(r.b, 0);
+}
+
+TEST(negative_reply_decodes_as_zero) {
+  Bytes r = decode("7F 01 12 \r\r", "0105");
+  CHECK(r.kind == ReplyKind::NonReply);
+  CHECK_EQ(r.a, 0);
+  CHECK_EQ(r.b, 0);
+}
+
+TEST(hex_that_is_not_a_positive_reply_decodes_as_zero) {
+  Bytes r = decode("12 34 56 \r\r", "0105");
+  CHECK(r.kind == ReplyKind::NonReply);
+  CHECK_EQ(r.a, 0);
+  CHECK_EQ(r.b, 0);
+}
+
+TEST(positive_start_followed_by_text_decodes_as_zero) {
+  Bytes r = decode("41 0C ERROR\r\r", "0105");
+  CHECK(r.kind == ReplyKind::NonReply);
   CHECK_EQ(r.a, 0);
   CHECK_EQ(r.b, 0);
 }
@@ -71,6 +104,66 @@ TEST(empty_reply_leaves_the_bytes_alone) {
   CHECK(r.kind == ReplyKind::Empty);
   CHECK_EQ(r.a, 0x5A);
   CHECK_EQ(r.b, 0xA5);
+}
+
+TEST(reply_of_only_line_breaks_leaves_the_bytes_alone) {
+  Bytes r = decode(" \r\r", "0105");
+  CHECK(r.kind == ReplyKind::Empty);
+  CHECK_EQ(r.a, 0x5A);
+  CHECK_EQ(r.b, 0xA5);
+}
+
+TEST(reply_to_another_pid_leaves_the_bytes_alone) {
+  Bytes r = decode("41 0C 1A F8 \r\r", "0105");
+  CHECK(r.kind == ReplyKind::OtherPid);
+  CHECK_EQ(r.a, 0x5A);
+  CHECK_EQ(r.b, 0xA5);
+}
+
+TEST(reply_to_another_three_byte_pid_leaves_the_bytes_alone) {
+  Bytes r = decode("62 16 74 0A 3C \r\r", "221E1C");
+  CHECK(r.kind == ReplyKind::OtherPid);
+  CHECK_EQ(r.a, 0x5A);
+  CHECK_EQ(r.b, 0xA5);
+}
+
+TEST(reply_in_another_mode_leaves_the_bytes_alone) {
+  Bytes r = decode("41 05 7B \r\r", "221E1C");
+  CHECK(r.kind == ReplyKind::OtherPid);
+  CHECK_EQ(r.a, 0x5A);
+  CHECK_EQ(r.b, 0xA5);
+}
+
+TEST(text_ahead_of_the_reply_is_skipped) {
+  Bytes r = decode("SEARCHING...\r41 05 7B \r\r", "0105");
+  CHECK(r.kind == ReplyKind::Value);
+  CHECK_EQ(r.a, 0x7B);
+}
+
+TEST(reply_ending_in_a_space_decodes) {
+  Bytes r = decode("41 05 7B ", "0105");
+  CHECK(r.kind == ReplyKind::Value);
+  CHECK_EQ(r.a, 0x7B);
+}
+
+TEST(header_with_no_data_decodes_as_zero) {
+  Bytes r = decode("41 05 \r\r", "0105");
+  CHECK(r.kind == ReplyKind::Value);
+  CHECK_EQ(r.a, 0);
+  CHECK_EQ(r.b, 0);
+}
+
+TEST(data_bytes_that_match_the_header_stay_data) {
+  Bytes r = decode("41 0C 41 0C \r\r", "010C");
+  CHECK(r.kind == ReplyKind::Value);
+  CHECK_EQ(r.a, 0x41);
+  CHECK_EQ(r.b, 0x0C);
+}
+
+TEST(a_broken_off_header_does_not_hide_the_real_one) {
+  Bytes r = decode("41 41 05 7B \r\r", "0105");
+  CHECK(r.kind == ReplyKind::Value);
+  CHECK_EQ(r.a, 0x7B);
 }
 
 TEST(reply_of_many_lines_does_not_overrun) {

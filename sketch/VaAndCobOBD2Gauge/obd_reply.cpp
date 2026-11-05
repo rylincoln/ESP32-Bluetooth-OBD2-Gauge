@@ -9,6 +9,8 @@ namespace {
 
 const size_t kTokenSize = 32;   // longer tokens are cut; no value in a reply needs this much
 const int kMaxReplyBytes = 128; // the most data bytes a reply to 03 is read for
+const int kMaxPidCodeBytes = 3; // 221E1C is the longest
+const char* const kWhitespace = " \r\n\t";
 
 // Copies token number `index` of the space-separated text, or an empty string past
 // the end. Runs of spaces count as empty tokens.
@@ -28,6 +30,16 @@ void copyToken(const char* text, int index, char* token) {
 
 uint8_t parseHexByte(const char* token) {
   return (uint8_t)strtol(token, nullptr, 16);
+}
+
+bool isHexPair(const char* token) {
+  return strlen(token) == 2 && isxdigit((unsigned char)token[0]) && isxdigit((unsigned char)token[1]);
+}
+
+// A positive reply starts with its request's mode plus 0x40, and the modes the gauge
+// sends are 01 and 22.
+bool isPositiveReplyByte(uint8_t byte) {
+  return (byte & 0xF0) == 0x40 || (byte & 0xF0) == 0x60;
 }
 
 uint8_t hexByteAt(const char* text, int index) {
@@ -93,13 +105,42 @@ char vinCharacter(uint8_t byte) {
 }  // namespace
 
 ReplyKind decodeBytes(const char* reply, const char* pidCode, uint8_t* a, uint8_t* b) {
-  size_t length = strlen(reply);
-  if (length == 0 || reply[length - 1] == ' ') return ReplyKind::Empty;
-  // The reply repeats the PID code, one byte per two hex digits, ahead of its data.
-  int dataStart = (int)(strlen(pidCode) / 2);
-  *a = hexByteAt(reply, dataStart);
-  *b = hexByteAt(reply, dataStart + 1);
-  return ReplyKind::Value;
+  // A reply repeats the PID code ahead of its data, with 0x40 added to the first byte:
+  // 0105 comes back as 41 05, and 221E1C as 62 1E 1C.
+  uint8_t header[kMaxPidCodeBytes] = {};
+  int headerLength = 0;
+  for (const char* code = pidCode; code[0] != '\0' && code[1] != '\0' && headerLength < kMaxPidCodeBytes; code += 2) {
+    const char pair[3] = {code[0], code[1], '\0'};
+    header[headerLength++] = parseHexByte(pair);
+  }
+  header[0] += 0x40;
+
+  const char* cursor = reply;
+  const char* end = reply + strlen(reply);
+  char token[kTokenSize];
+  int tokens = 0;
+  int matched = 0;
+  bool isGoodReply = true;  // to some request, if not this one
+  while (nextToken(cursor, end, kWhitespace, token, nullptr)) {
+    bool hexPair = isHexPair(token);
+    uint8_t byte = parseHexByte(token);
+    if (!hexPair || (tokens == 0 && !isPositiveReplyByte(byte))) isGoodReply = false;
+    tokens++;
+
+    if (hexPair && byte == header[matched]) matched++;
+    else matched = (hexPair && byte == header[0]) ? 1 : 0;
+    if (matched == headerLength) {
+      *a = nextToken(cursor, end, kWhitespace, token, nullptr) ? parseHexByte(token) : 0;
+      *b = nextToken(cursor, end, kWhitespace, token, nullptr) ? parseHexByte(token) : 0;
+      return ReplyKind::Value;
+    }
+  }
+
+  if (tokens == 0) return ReplyKind::Empty;
+  if (isGoodReply) return ReplyKind::OtherPid;
+  *a = 0;
+  *b = 0;
+  return ReplyKind::NonReply;
 }
 
 float toReading(Formula formula, uint8_t a, uint8_t b, float previous) {

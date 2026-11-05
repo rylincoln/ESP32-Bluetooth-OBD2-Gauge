@@ -67,7 +67,7 @@ tools.ctags.path=<N>/ctags
 
 ### One translation unit, ordered by includes
 
-The `.ino` declares the globals, then includes `image.h` and `touchscreen.h`, defines a few shared functions, then includes `bluetooth.h`, `meter.h` and `config.h`. `config.h` pulls in `music.h`, `nes_audio.h` and `firmware_update.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is a separate compile unit, and so is each hardware-free module (such as `obd_reply.cpp`). Those modules use no Arduino headers or firmware globals, so `test/` can build them directly, and the core compiles them as `gnu++11`. `beep()` and `clickSound()` live in `firmware_update.h`.
+The `.ino` declares the globals, then includes `image.h` and `touchscreen.h`, defines a few shared functions, then includes `bluetooth.h`, `shutdown.h`, `meter.h` and `config.h`. `config.h` pulls in `music.h`, `nes_audio.h` and `firmware_update.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is a separate compile unit, and so is each hardware-free module (such as `obd_reply.cpp`). Those modules use no Arduino headers or firmware globals, so `test/` can build them directly, and the core compiles them as `gnu++11`. `beep()` and `clickSound()` live in `firmware_update.h`.
 
 `image.h` is code for its first 106 lines and generated RGB565 arrays after that. `music.h` is VGM bytes on very long lines. Read both with line limits.
 
@@ -83,7 +83,7 @@ The DTC and VIN screens use the blocking `elm.exchange()`, with decoding in `obd
 
 Meter code uses three different indexes, often in the same function:
 
-- **PID index** (0-6) is a row in `pidTable` and `warningValue`.
+- **PID index** (0-6) is a row in `pidTable` and `settings.warning`.
 - **Slot** (0-6) is a position in the current layout's poll order: `elm.slot()`, `old_data`. `layoutTable[layout][slot]` gives its PID index, meter type and cell.
 - **Cell** is a screen position: 1-9 for arc and numeric meters, 1-4 for vertical bars.
 
@@ -107,12 +107,12 @@ To add a PID, add a row to `pidTable` and raise `kPidCount`, plus a `Formula` an
 ### Persistent state
 
 - **NVS namespace `setting`**, owned by `GaugeSettings` (the global `settings`), with a `SettingsStore` adapter over Preferences: `layout` (saved only at auto-off), `showsystem`, `tempOffset`, `ecu_off_volt`, `recent_client`, and one warning value per PID keyed by its `settingKey` in `pidTable`. Changing a key orphans the saved value, and keys must stay within NVS's 15-character limit.
-- **NVS namespace `security`**: `serialno`, read by `checkGenuine()`. The call is commented out at `.ino:342`.
+- **NVS namespace `security`**: `serialno`, read by `checkGenuine()`. The call is commented out in `setup()`, and it's the only code still using `pref` directly.
 - **SPIFFS**: `/TouchCalData1`, `/mypic.jpg` (copied from SD by the menu), `/vaandcob.jpg`. `firmware/partitions.bin` gives SPIFFS 128 KB, despite the scheme's 190 KB label.
 
 ### Audio
 
-The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page runs `Cartridge` in a core 0 FreeRTOS task, the only multitasking in the firmware, and that player drives the same pin with `dacWrite`. After `vTaskDelete`, `config.h:714` restores the pin and LEDC attachment; any new use of the player needs the same restore.
+The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page runs `Cartridge` in a core 0 FreeRTOS task, the only multitasking in the firmware, and that player drives the same pin with `dacWrite`. After `vTaskDelete`, the About entry in `configMenu()` restores the pin and LEDC attachment; any new use of the player needs the same restore.
 
 ### Firmware delivery
 
@@ -124,7 +124,7 @@ The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page ru
 
 - **Line endings:** every text source is committed CRLF except `gauge_factory_init.ino` (LF), with no `.gitattributes`. Keep each file's endings and confirm `git diff --stat` shows only the lines you meant to change. Commit `926ccb3` shows the cost of a flip: about 100k lines of churn with no content change.
 - **Hold feel:** the code once said 3 s but its timer subtracted backwards, so holds have always registered on the next debounced pass, about 200 ms after the press. `ButtonGesture::kHoldMs` keeps that feel on purpose. Raising it past 200 changes how every menu feels, so treat it as a UX change.
-- **`SKIP_CONNECTION` doesn't skip:** `connectLastOBDII()` still runs at `.ino:383` and resets `foundOBD2` when the connection fails, which lands in the scan loop. Viewing meters without an adapter needs a code change.
+- **`SKIP_CONNECTION` doesn't skip:** `connectLastOBDII()` still runs in `setup()` and resets `foundOBD2` when the connection fails, which lands in the scan loop. Viewing meters without an adapter needs a code change.
 - **Fresh flash:** with no `/TouchCalData1`, `touch_calibrate()` blocks `setup()` until all four corners are touched (holding the button at boot forces recalibration). The logo screen then shows a red "File not found" for 3 s, because nothing in this repo writes `/vaandcob.jpg`. Both are expected.
 - **Pins:** the display's are in `User_Setup.h`, the touch controller's in `touchscreen.h`, and the rest at the top of the `.ino`, duplicated in `gauge_factory_init.ino`. The button is also hard-coded as `GPIO_NUM_27` in `shutdown.h`.
 - **Build output:** `.gitignore` only covers `.DS_Store` and some `build/` output is tracked. The IDE's "Export Compiled Binary" writes there, so keep those changes out of commits.

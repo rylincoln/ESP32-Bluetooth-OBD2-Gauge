@@ -49,6 +49,7 @@ Preferences pref;         //create preference
 #include "button_gesture.h"  //tap and hold
 #include "gauge_settings.h"  //what the gauge remembers across power-offs
 #include "preferences_store.h"
+#include "shutdown_watch.h"  //when to put the gauge to sleep
 
 
 //Pin configuration
@@ -79,7 +80,6 @@ uint8_t A = 0;                                        //get A
 uint8_t B = 0;                                        //get B
 
 //Global variable
-const uint32_t SLEEP_DURATION = 180 * 1000000;                         //180 sec* us = 3 min
 String line[12] = { "", "", "", "", "", "", "", "", "", "", "", "" };  //buffer for each line in terminal function
 bool dim = false;                                                      //back light dim flag
 const uint8_t LIGHT_LEVEL = 40;                                        //backlight control by light level Higher = darker light
@@ -90,10 +90,7 @@ uint8_t pidRead = 0;                                                   //counter
 String serial_no = "";                                                 //keep serial no.
 
 //CPU Temp
-const uint8_t tempOverheat = 60;       //max operating cpu temp 60c
 float tempRead = 0.0;                  //current reading cpu temp
-uint8_t temp_read_delay = 0;           //hold delay counter to read temp
-uint8_t temp_overheat_count = 0;       //counter to read continuiosly overheat
 
 //BLUETOOTH
 String se_message = "";                                                     //serial port message buffer
@@ -112,45 +109,7 @@ bool foundOBD2 = false;
 #include "touchscreen.h"
 
 /*----------- global function ---------*/
-void disconnectAdapter();  //in bluetooth.h
 
-//------------------------------------------------------------------------------------------
-void checkCPUTemp() {  //temperature can read only when BT or Wifi Connected
-  temp_read_delay++;
-  if ((temp_read_delay >= 50) && (foundOBD2)) {  //delay loop 50 then read temp, avoid error eading
-    temp_read_delay = 0;
-    uint8_t temperature = temprature_sens_read();      //read internal temp sensor
-    tempRead = (temperature - 32) / 1.8 + settings.tempOffset;  //change unit F to C
-#ifdef SERIAL_DEBUG
-    Serial.print(tempRead, 1);  //print Celsius temperature and tab
-    Serial.println("°c");
-#endif
-    //read 10 times to confirm it's really overtemp.
-    if (tempRead >= tempOverheat) temp_overheat_count++;  //count overheat time
-    else temp_overheat_count = 0;                         //reset
-    if (temp_overheat_count > 10) {                       //overheat read more than 10 times.
-      Serial.printf("CPU Overheat Shutdown at %d°C\n", tempOverheat);
-      tft.fillRectVGradient(0, 0, 320, 240, TFT_RED, TFT_BLACK);
-      tft.pushImage(127, 5, 64, 64, overheat, TFT_RED);  //show sdcard icon
-      tft.setTextColor(TFT_WHITE);
-      tft.drawCentreString("CPU Overheat Shutdown!", 159, 75, 4);
-      tft.setTextColor(TFT_WHITE, TFT_BLUE);
-      tft.drawCentreString("Auto-restart within 3 minutes", 159, 140, 4);
-      tft.drawCentreString("OR", 159, 170, 4);
-      tft.drawCentreString("Press button to restart", 159, 200, 4);
-      ledcWriteTone(buzzerChannel, 1500);
-      delay(5000);
-      ledcWriteTone(buzzerChannel, 0);
-      disconnectAdapter();  //disconnect bluetooth
-      tft.fillScreen(TFT_BLACK);
-      tft.writecommand(0x10);  //TFT sleep
-      //enter deep sleep
-      esp_sleep_enable_timer_wakeup(SLEEP_DURATION);   //sleep timer 3 min
-      esp_sleep_enable_ext0_wakeup(GPIO_NUM_27, LOW);  //wake when button pressed
-      esp_deep_sleep_start();                          //sleep shutdown backlight auto off with esp32
-    }                                                  //if temp_overheat_coun
-  }                                                    //if temp_read_delay
-}  //check CPU Temp
 /*------------------*/
 //TERMINAL terminal for debugging display text
 void Terminal(String texts, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
@@ -195,6 +154,7 @@ void checkGenuine() {                          //check if genuine obd2 gauge - m
 //---- Include Header File --------------------
 //#include "image.h"
 #include "bluetooth.h"
+#include "shutdown.h"
 #include "meter.h"
 #include "config.h"
 
@@ -337,7 +297,7 @@ void loop() {
     initScreen();  //open meter screen
                    //reset variable
     for (uint8_t i = 0; i < kSlotCount - 1; i++) old_data[i] = 0.0;
-    engine_off_count = 0;
+    autoOffWatch.reset();
     elm.restartRound();  //discard replies for the old layout
     delay(200);          //delay avoid bounce
   }

@@ -99,10 +99,10 @@ To add a PID, add a row to `pidTable` and raise `kPidCount`, plus a `Formula` an
 
 ### Shutdown
 
-Both shutdown paths use deep sleep, and waking re-runs `setup()` from scratch:
+`shutdown_watch` decides when and `shutDown()` in `shutdown.h` does it, with both sequences side by side. Both use deep sleep, and waking re-runs `setup()` from scratch:
 
-- `engine_onoff()`: PCM volts at or below `ecu_off_volt` for more than 20 consecutive reads. Wakes on the button only.
-- `checkCPUTemp()`: at or above `tempOverheat` for more than 10 consecutive reads. Wakes on the button or after 3 minutes. It only reads once `foundOBD2` is set, because the sensor needs the radio active.
+- Auto-off: PCM volts at or below `settings.ecuOffVolt` for more than 20 consecutive reads. Wakes on the button only.
+- Overheat: at or above `OverheatWatch::kOverheatC` for more than 10 consecutive reads. Wakes on the button or after 3 minutes. `checkCPUTemp()` only reads once `foundOBD2` is set, because the sensor needs the radio active.
 
 ### Persistent state
 
@@ -126,6 +126,6 @@ The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page ru
 - **Hold feel:** the code once said 3 s but its timer subtracted backwards, so holds have always registered on the next debounced pass, about 200 ms after the press. `ButtonGesture::kHoldMs` keeps that feel on purpose. Raising it past 200 changes how every menu feels, so treat it as a UX change.
 - **`SKIP_CONNECTION` doesn't skip:** `connectLastOBDII()` still runs at `.ino:383` and resets `foundOBD2` when the connection fails, which lands in the scan loop. Viewing meters without an adapter needs a code change.
 - **Fresh flash:** with no `/TouchCalData1`, `touch_calibrate()` blocks `setup()` until all four corners are touched (holding the button at boot forces recalibration). The logo screen then shows a red "File not found" for 3 s, because nothing in this repo writes `/vaandcob.jpg`. Both are expected.
-- **Pins:** the display's are in `User_Setup.h`, the touch controller's in `touchscreen.h`, and the rest at the top of the `.ino`, duplicated in `gauge_factory_init.ino`. The button is also hard-coded as `GPIO_NUM_27` at `.ino:222` and `meter.h:434`.
+- **Pins:** the display's are in `User_Setup.h`, the touch controller's in `touchscreen.h`, and the rest at the top of the `.ino`, duplicated in `gauge_factory_init.ino`. The button is also hard-coded as `GPIO_NUM_27` in `shutdown.h`.
 - **Build output:** `.gitignore` only covers `.DS_Store` and some `build/` output is tracked. The IDE's "Export Compiled Binary" writes there, so keep those changes out of commits.
 - **Stale comments:** trust the code over the comments. The `.ino` header's line numbers have drifted and it says littleFS where the code uses SPIFFS.

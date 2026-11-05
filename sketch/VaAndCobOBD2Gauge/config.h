@@ -165,7 +165,7 @@ void setWarning(int8_t index, int8_t change) {
   for (uint8_t i = 0;i<kPidCount+1;i++) {//draw all pid list
      tft.setTextColor(TFT_WHITE,TFT_BLACK);
      if (i == 0) {
-       tft.drawString("CPU Overheat Temperature "+String(tempOverheat)+"`c ,offset ",0,58,2);
+       tft.drawString("CPU Overheat Temperature "+String(OverheatWatch::kOverheatC)+"`c ,offset ",0,58,2);
        tft.drawRightString(" `c  ",319,57,2);
      } else {
        tft.drawString(pidTable[i-1].menuLabel,0,58+(i*16),2);//paramter list

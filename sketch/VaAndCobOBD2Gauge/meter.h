@@ -4,7 +4,6 @@ const uint16_t screenWidth = tft.height();//landscape
 const uint16_t screenHeight = tft.width();
 bool blinkCell[9] = {false,false,false,false,false,false,false,false,false};//flag for blinking
 
-uint8_t engine_off_count = 0;//counter to indicate engine is off then sleep
 float old_data[kSlotCount] = {};//keep old data for each gauge to improve speed for pidIndex 0-6
 
 //backlight variable average counter
@@ -237,37 +236,6 @@ void initScreen() {
   }
 }  //initscreen
 /*-------------------------------*/
-//check engine status if off then turn off gauge
-void engine_onoff(float data) {  //use pcm volt
-  int compare = settings.ecuOffVolt/data;
-  if (compare > 0)  //check lower voltage
-    engine_off_count++;
-  else
-    engine_off_count = 0;  //reset
-  if (engine_off_count > 20) {  //engine is stop
-    settings.saveLayout();
-    show_spiffs_jpeg_image("/mypic.jpg", 0, 0);//show mypic
-    ledcWriteTone(buzzerChannel,3136);
-    delay(100);
-    ledcWriteTone(buzzerChannel,2637);
-    delay(100);
-    ledcWriteTone(buzzerChannel,2093);
-    delay(100);
-    ledcWriteTone(buzzerChannel,0);
-    for (int i=255;i>0;i--) {//fading effect
-      ledcWrite(backlightChannel, i);//full bright
-      delay(10);
-    }//turn off backlight
-    elm.send("ATLP");//set ELM327 to Low Power
-    disconnectAdapter();//disconnect bluetooth
-    tft.fillScreen(TFT_BLACK);
-    tft.writecommand(0x10); //TFT sleep
-    esp_sleep_enable_ext0_wakeup(GPIO_NUM_27,LOW); //wake when button pressed
-    esp_deep_sleep_start();//sleep shutdown backlight auto off with esp32
-
-    }//if engine_off_count>20
-}
-/*-------------------------------*/
 void updateMeter(uint8_t slot, const char* reply) {  //update parameter on screen
   const SlotPlan& plan = layoutTable[settings.layout][slot];
   const PidInfo& pid = pidTable[plan.pid];
@@ -282,7 +250,9 @@ void updateMeter(uint8_t slot, const char* reply) {  //update parameter on scree
     case MeterType::VBar: plotVBar(slot, plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
     case MeterType::None: break;
   }
-  if (countsTowardAutoOff(settings.layout, slot)) engine_onoff(data);
+  if (countsTowardAutoOff(settings.layout, slot) && autoOffWatch.update(data, settings.ecuOffVolt)) {
+    shutDown(ShutdownReason::AutoOff);
+  }
 }  //updatemeter
 /*-------------------------------*/
 

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Arduino firmware for an ESP32-2432S028 board (2.8" 320x240 ILI9341, resistive touch) that polls a Bluetooth ELM327 adapter and draws OBD-II gauges, built for Ford vehicles. `sketch/VaAndCobOBD2Gauge/` is the firmware and `sketch/gauge_factory_init/` is a one-shot provisioning sketch. `origin` is the user's fork and `upstream` is the original author's archived repo, so changes go to `origin`.
+Arduino firmware for an ESP32-2432S028 board (2.8" 320x240 ILI9341, resistive touch) that polls a Bluetooth ELM327 adapter and draws OBD-II gauges, built for Ford vehicles. `sketch/VaAndCobOBD2Gauge/` is the firmware and `sketch/gauge_factory_init/` is a one-shot provisioning sketch. `origin` is the user's fork and `upstream` is the original author's archived repo, so changes go to `origin`. `gh` defaults to `upstream` here, so pass `-R rylincoln/ESP32-Bluetooth-OBD2-Gauge`.
 
 ## Build and verify
 
@@ -116,7 +116,7 @@ The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page ru
 
 ### Firmware delivery
 
-- `sketch/VaAndCobOBD2Gauge/firmware/` holds release binaries and ESP Web Tools manifests for T5 and T6. The web flasher itself is hosted outside this repo. The `_nogenuine` binaries skip the genuine check, as the current source does.
+- `sketch/VaAndCobOBD2Gauge/firmware/` holds the original author's release binaries and ESP Web Tools manifests for T5 and T6, built before this fork's changes. The web flasher itself is hosted outside this repo. The `_nogenuine` binaries skip the genuine check, as the current source does.
 - On-device updates run from Config menu > Update firmware: `/VaAndCobOBD2Gauge.bin` from the SD root, or a Wi-Fi AP with an on-screen password and an upload page at `192.168.4.1`. Both take the app binary only, which must fit the 1.9 MB OTA slot.
 - `gauge_factory_init` writes the serial hard-coded at `gauge_factory_init.ino:14` to NVS, then flashes from SD. It is only needed if `checkGenuine()` is re-enabled.
 

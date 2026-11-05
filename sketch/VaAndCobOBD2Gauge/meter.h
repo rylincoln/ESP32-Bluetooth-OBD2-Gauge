@@ -4,9 +4,6 @@ const uint16_t screenWidth = tft.height();//landscape
 const uint16_t screenHeight = tft.width();
 bool blinkCell[9] = {false,false,false,false,false,false,false,false,false};//flag for blinking
 
-String pidList[kSlotCount] = {};          //{"0104","0105","010C","010B","010C","0142","015C"}
-uint8_t pidReadSkip[kSlotCount] = {};     //skip reading 0 - 3; 3 = max delay read
-uint8_t pidCurrentSkip[kSlotCount] = {};  //current skip counter
 uint8_t engine_off_count = 0;//counter to indicate engine is off then sleep
 float old_data[kSlotCount] = {};//keep old data for each gauge to improve speed for pidIndex 0-6
 
@@ -41,7 +38,7 @@ void numericMeter(uint8_t cell, uint8_t pid) {
 }  //numericMeter
 /*---------------------------*/
 //plot number on digital Meter
-void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
+void plotNumeric(uint8_t slot, uint8_t cell, float data, int warn, bool digit) {
   if (isWarning(data, warn)) {
     int w = screenWidth / 2 - 1;
     int h = screenHeight / 3 - 1;
@@ -54,7 +51,7 @@ void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
         case 3: result = "   " + result; break;
         case 4: result = "  " + result; break;
       }//switch
-      old_data[pidIndex] = data;//update old data
+      old_data[slot] = data;//update old data
       tft.setTextColor(TFT_RED, TFT_BLACK);//red color font
       tft.drawRightString(result.c_str(), x + w - 5, y + (h * 0.25) + 11, 6);
   
@@ -65,7 +62,7 @@ void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
   
   } else {//no warning
 
-    if (data != old_data[pidIndex]) {//if value change then redraw new data
+    if (data != old_data[slot]) {//if value change then redraw new data
      int w = screenWidth / 2 - 1;
      int h = screenHeight / 3 - 1;
      int x = cellRect(MeterType::Numeric, cell).x;
@@ -79,7 +76,7 @@ void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
     }//if data
     tft.setTextColor(TFT_GREEN, TFT_BLACK);//green color font
     tft.drawRightString(result.c_str(), x + w - 5, y + (h * 0.25) + 11, 6);
-    old_data[pidIndex] = data;//update old data
+    old_data[slot] = data;//update old data
     } //if nothing changed then skip
   }//if warn/data == 0
 }
@@ -119,8 +116,8 @@ void arcMeter(uint8_t cell, uint8_t pid) {
   }
 }
 // #########################################################################
-void plotArc(uint8_t cell, float data, int warn, int min, int max, bool digit) {
-if (data != old_data[pidIndex]) {
+void plotArc(uint8_t slot, uint8_t cell, float data, int warn, int min, int max, bool digit) {
+if (data != old_data[slot]) {
   int x = cellRect(MeterType::Arc, cell).x;
   int y = cellRect(MeterType::Arc, cell).y;
 
@@ -138,11 +135,11 @@ if (data != old_data[pidIndex]) {
   tft.setTextColor(arcColor, TFT_BLACK);
   tft.drawString(result.c_str(), x + 10, y + 60, 2);  // data
   int angle = map(data, min, max, 135, 225);
-  if (data >= old_data[pidIndex])//new data > old data -> draw only green arc
+  if (data >= old_data[slot])//new data > old data -> draw only green arc
      tft.drawSmoothArc(x + 80, y + 90, 80, 60, 134, angle, arcColor, TFT_DARKGREY, false);
   else //new data < old data -> draw only white arc
      tft.drawSmoothArc(x + 80, y + 90, 80, 60, angle + 1, 226, TFT_WHITE, TFT_DARKGREY, false);
-  old_data[pidIndex] = data;//update old data
+  old_data[slot] = data;//update old data
   }//if 
 
 }
@@ -191,8 +188,8 @@ void vBarMeter(uint8_t cell, uint8_t pid) {
 }  //drawLinerVmeter
 /*-------------------*/
 //vertical meter cell 1 to 4 full screen height
-void plotVBar(uint8_t cell, float data, int warn, int min, int max, bool digit) {  //cell 1-4
-if (data != old_data[pidIndex]) {//if value change then redraw new data
+void plotVBar(uint8_t slot, uint8_t cell, float data, int warn, int min, int max, bool digit) {  //cell 1-4
+if (data != old_data[slot]) {//if value change then redraw new data
   int x = cellRect(MeterType::VBar, cell).x;
   int w = screenWidth / 4;
   if (data < min) data = min;
@@ -200,7 +197,7 @@ if (data != old_data[pidIndex]) {//if value change then redraw new data
   int barColor = isWarning(data, warn) ? TFT_RED : TFT_GREEN;//red bar red font when warning
   //draw new bar
   int barH = map(data, min, max, 0, 182);
-  if (data > old_data[pidIndex]) //new data > old data -> draw red bar
+  if (data > old_data[slot]) //new data > old data -> draw red bar
     tft.fillRectVGradient(x + 5, 212 - barH, 20, barH, barColor, 0x8000);//lower
   else //new data < old data -> draw black bar
     tft.fillRect(x + 5, 29, 20, 183 - barH, TFT_BLACK);  //upper
@@ -213,7 +210,7 @@ if (data != old_data[pidIndex]) {//if value change then redraw new data
     case 4: result = " " + result + " "; break;
   }
   tft.drawCentreString(result.c_str(), x + w / 2, screenHeight - (screenHeight * 0.12) + 1, 4);
-  old_data[pidIndex] = data;//update old data
+  old_data[slot] = data;//update old data
  }//if
 }
 /*-------------------*/
@@ -222,13 +219,15 @@ void initScreen() {
   #ifdef SERIAL_DEBUG
   Serial.printf("Display layout -> %d\n",layout);
   #endif
+  const char* codes[kSlotCount];
+  uint8_t skips[kSlotCount];
   for (uint8_t slot = 0; slot < kSlotCount; slot++) {
     const PidInfo& pid = pidTable[layoutTable[layout][slot].pid];
-    pidList[slot] = pid.code;
-    pidReadSkip[slot] = pid.skip;
-    pidCurrentSkip[slot] = pidReadSkip[slot];  //skip for skip reading pid
+    codes[slot] = pid.code;
+    skips[slot] = pid.skip;
     old_data[slot] = 0;//clear old data
   }
+  elm.setRequests(codes, skips, kSlotCount);
   tft.fillScreen(TFT_BLACK);  //clear screen
   for (uint8_t slot = 0; slot < kSlotCount; slot++) {
     const SlotPlan& plan = layoutTable[layout][slot];
@@ -264,8 +263,8 @@ void engine_onoff(float data) {  //use pcm volt
       ledcWrite(backlightChannel, i);//full bright
       delay(10);
     }//turn off backlight
-    BTSerial.print("ATLP\r");//set ELM327 to Low Power
-    BTSerial.disconnect();//disconnect bluetooth
+    elm.send("ATLP");//set ELM327 to Low Power
+    disconnectAdapter();//disconnect bluetooth
     tft.fillScreen(TFT_BLACK);
     tft.writecommand(0x10); //TFT sleep
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_27,LOW); //wake when button pressed
@@ -274,22 +273,21 @@ void engine_onoff(float data) {  //use pcm volt
     }//if engine_off_count>20
 }
 /*-------------------------------*/
-void updateMeter(uint8_t slot, String response) {  //update parameter on screen
+void updateMeter(uint8_t slot, const char* reply) {  //update parameter on screen
   const SlotPlan& plan = layoutTable[layout][slot];
   const PidInfo& pid = pidTable[plan.pid];
   int warn = warningValue[plan.pid].toInt();
 
-  decodeBytes(response.c_str(), pid.code, &A, &B);
-  float data = toReading(pid.formula, A, B, old_data[pidIndex]);
+  decodeBytes(reply, pid.code, &A, &B);
+  float data = toReading(pid.formula, A, B, old_data[slot]);
 
   switch (plan.meter) {
-    case MeterType::Numeric: plotNumeric(plan.cell, data, warn, pid.showDecimal); break;
-    case MeterType::Arc: plotArc(plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
-    case MeterType::VBar: plotVBar(plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
+    case MeterType::Numeric: plotNumeric(slot, plan.cell, data, warn, pid.showDecimal); break;
+    case MeterType::Arc: plotArc(slot, plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
+    case MeterType::VBar: plotVBar(slot, plan.cell, data, warn, pid.minValue, pid.maxValue, pid.showDecimal); break;
     case MeterType::None: break;
   }
   if (countsTowardAutoOff(layout, slot)) engine_onoff(data);
-  bt_message = "";  //reset
 }  //updatemeter
 /*-------------------------------*/
 

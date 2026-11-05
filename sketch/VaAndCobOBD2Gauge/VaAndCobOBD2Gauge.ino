@@ -45,6 +45,7 @@ Preferences pref;         //create preference
 #include <TFT_eSPI.h>  //Hardware-specific library
 #include "obd_reply.h"  //turns ELM327 replies into values
 #include "gauge_tables.h"  //the PIDs and layouts
+#include "elm327_link.h"  //the connection to the ELM327 adapter
 
 
 //Pin configuration
@@ -66,20 +67,12 @@ TFT_eSPI tft = TFT_eSPI();
 #define TFT_GREY 0x5AEB
 
 
-//ELM327 init https://www.elmelectronics.com/wp-content/uploads/2016/07/ELM327DS.pdf
-const uint8_t elm327InitCount = 8;
-const String elm327Init[elm327InitCount] = { "ATZ", "ATBRD23", "ATSP0", "ATAT2", "ATL0", "ATH0", "ATE0", "0100" };  //agressive wait response time from ECU
-//const String elm327Init[elm327InitCount] = {"ATZ","ATPP0CSV35","ATPP0CON","ATSP0","ATAT2","ATL0","ATH0","ATE0","0100"};//agressive wait response time from ECU
-
 //hold warning value
 String warningValue[kPidCount];
 
 /*---------------------------*/
 //if NO DATA value will set to 0 to skip reading
 uint8_t layout = 0;                                   //current layout, saved in NVS
-uint8_t pidIndex = 0;                                 //point to PID List
-bool prompt = false;                                  //bt elm ready flag
-bool skip = false;                                    //pid skip flag
 uint8_t A = 0;                                        //get A
 uint8_t B = 0;                                        //get B
 
@@ -105,7 +98,6 @@ uint8_t temp_read_delay = 0;           //hold delay counter to read temp
 uint8_t temp_overheat_count = 0;       //counter to read continuiosly overheat
 
 //BLUETOOTH
-String bt_message = "";                                                     //bluetooth message buffer
 String se_message = "";                                                     //serial port message buffer
 String deviceName[8] = { "", "", "", "", "", "", "", "" };                  //discoveryBT name
 String deviceAddr[8] = { "", "", "", "", "", "", "", "" };                  //discover BT addr
@@ -117,13 +109,13 @@ const String client_name = "OBDII";                                         //ad
 esp_spp_sec_t sec_mask = ESP_SPP_SEC_NONE;                                  // or ESP_SPP_SEC_ENCRYPT|ESP_SPP_SEC_AUTHENTICATE to request pincode confirmation
 esp_spp_role_t role = ESP_SPP_ROLE_SLAVE;                                   // or ESP_SPP_ROLE_MASTER
 bool foundOBD2 = false;
-BluetoothSerial BTSerial;  //bluetooth serial device
 
 //---- Include Header File ---
 #include "image.h"
 #include "touchscreen.h"
 
 /*----------- global function ---------*/
+void disconnectAdapter();  //in bluetooth.h
 
 //------------------------------------------------------------------------------------------
 void checkCPUTemp() {  //temperature can read only when BT or Wifi Connected
@@ -152,7 +144,7 @@ void checkCPUTemp() {  //temperature can read only when BT or Wifi Connected
       ledcWriteTone(buzzerChannel, 1500);
       delay(5000);
       ledcWriteTone(buzzerChannel, 0);
-      BTSerial.disconnect();  //disconnect bluetooth
+      disconnectAdapter();  //disconnect bluetooth
       tft.fillScreen(TFT_BLACK);
       tft.writecommand(0x10);  //TFT sleep
       //enter deep sleep
@@ -176,7 +168,6 @@ void Terminal(String texts, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
     }
     tft.drawString(line[i], x, i * 20 + y, 2);
   }                 //for
-  bt_message = "";  //reset bt message
 }
 /*------------------*/
 
@@ -209,6 +200,16 @@ void checkGenuine() {                          //check if genuine obd2 gauge - m
 #include "bluetooth.h"
 #include "meter.h"
 #include "config.h"
+
+//shows each reply to the ELM327 setup commands when debugging
+void logInitReply(const char* reply) {
+#ifdef SERIAL_DEBUG
+  Serial.println(reply);
+#endif
+#ifdef TERMINAL
+  Terminal(reply, 0, 48, 320, 191);
+#endif
+}
 
 //----SET UP -----------------------------------
 void setup() {
@@ -304,7 +305,7 @@ recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
 
 
   //start bluetooth
-  if (!BTSerial.begin("Va&Cob OBDII Gauge", true)) {
+  if (!startBluetooth()) {
     Serial.println(F("Bluetooth..error!"));
     Terminal("Bluetooth..error!", 0, 48, 320, 191);
     abort();
@@ -337,32 +338,11 @@ recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
 
   //Initialize ELM327
   Terminal("Initializing...", 0, 48, 320, 191);
-  bt_message = "";
-  for (uint8_t initIndex = 0; initIndex < elm327InitCount; initIndex++) {  //send init ELM327 AT command
-    BTSerial.print(elm327Init[initIndex] + "\r");
-    if (initIndex == elm327InitCount - 1) delay(2000);  //wait for 0100 Searching..protocal
-    else delay(100);                                    //must add delay , unless will skip BTSerial.avaialble>0
-    while (BTSerial.available() > 0) {
-      char incomingChar = BTSerial.read();
-      if (incomingChar == '>') {  //check prompt
-        BTSerial.flush();         //clear buffer
-#ifdef SERIAL_DEBUG
-        Serial.println(bt_message);
-#endif
-#ifdef TERMINAL
-        Terminal(bt_message, 0, 48, 320, 191);
-#endif
-        if (initIndex == 1) BTSerial.print("\r");  //ATBRD23 response
-        bt_message = "";
-      } else {
-        bt_message.concat(incomingChar);  //keep elm327 respond
-      }
-    }  //while
-  }    //for
+  elm.initialise(logInitReply);
 
   initScreen();
   beepbeep();
-  prompt = true;
+  elm.requestStep();
   //----------------------
 }  //setup
 
@@ -390,38 +370,13 @@ void loop() {
                      //reset variable
       for (uint8_t i = 0; i < kSlotCount - 1; i++) old_data[i] = 0.0;
       engine_off_count = 0;
-      BTSerial.flush();                   //clear tx
-      while (BTSerial.available() > 0) {  //clear rx buffer
-        BTSerial.read();
-      }
-      bt_message = "";
-      skip = false;
-      pidIndex = kSlotCount - 1;  //will be +1 to be 0
+      elm.restartRound();          //discard replies for the old layout
       press = false;               //reset flag
-      prompt = true;               //to trig reading elm again
       delay(200);                  //delay avoid bounce
 
     }  //if press
 
   }  //else digitalRead
-     //----------------------
-     //BLUETOOTH read
-  while (BTSerial.available() > 0) {
-    char incomingChar = BTSerial.read();
-    if (incomingChar == '>') {  //check prompt
-      BTSerial.flush();         //clear tx
-#ifdef SERIAL_DEBUG
-      Serial.println(bt_message);
-#endif
-#ifdef TERMINAL  //for degbugging
-      decodeBytes(bt_message.c_str(), pidList[pidIndex].c_str(), &A, &B);
-      Terminal(bt_message + "->" + String(A) + "," + String(B), 0, 48, 320, 191);
-#endif
-      prompt = true;  //pid response ready to calculate & display
-    } else {
-      bt_message.concat(incomingChar);  //keep elm327 respond
-    }
-  }
   //----------------------
   //SERIAL PORT read
   if (Serial.available() > 0) {
@@ -436,7 +391,7 @@ void loop() {
 #ifdef TERMINAL
         Terminal(se_message, 0, 48, 320, 191);  //display terminal
 #endif
-        BTSerial.print(se_message + "\r");
+        elm.send(se_message.c_str());
         se_message = "";
         Serial.flush();
       }  //if se_message
@@ -445,17 +400,23 @@ void loop() {
   }    //if Serial.available
 
   //Send another PID to elm327
-  if (prompt) {      //> ELM327 ready! -> request next PID
-    prompt = false;  //no prompt from ELM327
-    checkCPUTemp();  //check temperature.
-    if (!skip) {
-      updateMeter(pidIndex, bt_message);  //update meter screen
-      pidRead++;                          //for calculate pid/s
+  if (elm.stepDue()) {  //> ELM327 ready! -> request next PID
+    if (elm.reply()[0] != '\0') {
+#ifdef SERIAL_DEBUG
+      Serial.println(elm.reply());
+#endif
+#ifdef TERMINAL  //for degbugging
+      decodeBytes(elm.reply(), pidTable[layoutTable[layout][elm.slot()].pid].code, &A, &B);
+      Terminal(String(elm.reply()) + "->" + String(A) + "," + String(B), 0, 48, 320, 191);
+#endif
     }
-    pidIndex++;  //point to next pid
-    if (pidIndex >= kSlotCount) {
-      pidIndex = 0;  //back to pid 0
-      autoDim();     //auto backlight handle
+    checkCPUTemp();  //check temperature.
+    if (elm.hasReply()) {
+      updateMeter(elm.slot(), elm.reply());  //update meter screen
+      pidRead++;                             //for calculate pid/s
+    }
+    if (elm.advance()) {  //end of a round
+      autoDim();          //auto backlight handle
       if (showsystem) {
         String status = String(pidRead * 1000.0 / (millis() - runtime), 0) + " p/s " + String(tempRead, 1) + "`c";
         tft.setTextColor(TFT_YELLOW, TFT_BLACK);
@@ -464,17 +425,7 @@ void loop() {
       }             //if showsystem
       pidRead = 0;  //reset pid read counter
     }
-    if (pidCurrentSkip[pidIndex] <= 0) {                 //end of skip loop , go next index
-      pidCurrentSkip[pidIndex] = pidReadSkip[pidIndex];  //read max delay loop to current
-      skip = false;
-      BTSerial.print(pidList[pidIndex] + "\r");                 //send PID request
-    } else {                                                    //skip sending request
-      pidCurrentSkip[pidIndex] = pidCurrentSkip[pidIndex] - 1;  //decrese loop count
-      prompt = true;
-      skip = true;
-    }  //else
-
-  }  //if prompt
+  }  //if stepDue
 
   /*------------------*/
 }  // loop

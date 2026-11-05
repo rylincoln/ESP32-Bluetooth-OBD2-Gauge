@@ -1,4 +1,25 @@
 /* Bluetooth function */
+BluetoothSerial BTSerial;  //bluetooth serial device
+
+//how the link to the ELM327 adapter reaches it
+class BluetoothTransport : public ElmTransport {
+ public:
+  int available() override { return BTSerial.available(); }
+  int read() override { return BTSerial.read(); }
+  void write(const char* text) override { BTSerial.print(text); }
+  void flush() override { BTSerial.flush(); }
+  void wait(uint32_t ms) override { delay(ms); }
+};
+BluetoothTransport btTransport;
+Elm327Link elm(btTransport);
+
+bool startBluetooth() {
+  return BTSerial.begin("Va&Cob OBDII Gauge", true);
+}
+
+void disconnectAdapter() {
+  BTSerial.disconnect();
+}
 //----------------------------------
 //convert bt address to text
 //{0x00,0x1d,0xa5,0x00,0x12,0x92} -> 00:1d:a5:00:12:92
@@ -104,7 +125,7 @@ void scanBTdevice() {//scan bluetooth device
 
     Terminal("Connected Successfully!",0,48,320,191);  
     Serial.println(F("Connected Successfully!"));
-    prompt = true;
+    elm.requestStep();
     digitalWrite(LED_GREEN_PIN, LOW);//green led 
 
   } else {
@@ -137,7 +158,7 @@ void connectLastOBDII() {
   } else {  
     Terminal("Connected Successfully!",0,48,320,191);  
     Serial.println(F("Connected Successfully!"));
-    prompt = true;
+    elm.requestStep();
     digitalWrite(LED_GREEN_PIN, LOW);//green led 
     foundOBD2 = true;
   }

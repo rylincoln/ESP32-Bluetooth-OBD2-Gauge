@@ -34,6 +34,10 @@ _Avoid_: error response, empty reply
 The value in engineering units worked out from a reply, such as 92 °C.
 _Avoid_: data, value, result
 
+**Round**:
+One pass through all of a layout's slots, leaving out any whose PID isn't due yet.
+_Avoid_: loop, cycle
+
 ### On the screen
 
 **Gauge**:

@@ -9,7 +9,6 @@ this header file is for configuration menu
 #include "music.h"   //songs data
 #include "nes_audio.h" //nes audio player
 #include "firmware_update.h" //firmware updater function
-#include "elm327.h"// read VIN function
 
 #define mypic_filename "/mypic.jpg"//mypic file
 #define FORMAT_SPIFFS_IF_FAILED true//format if no spiffs
@@ -90,9 +89,9 @@ void animation() {//start field effect
   String txt = "[ "+serial_no+" ] BUILD : "+compile_date;
   tft.drawString(txt,0,0,2);
   //get VIN
-  getPID("ATE0");//force echo off
+  elm.exchange("ATE0");//force echo off
   char vin[kVinSize];
-  if (decodeVin(getPID("0902").c_str(), vin, sizeof vin)) {
+  if (decodeVin(elm.exchange("0902"), vin, sizeof vin)) {
     Serial.printf("VIN: %s\n", vin);
     txt = "VIN :  " + String(vin);
   } else {
@@ -472,7 +471,7 @@ void configMenu() {//control configuration menu
           tft.setTextColor(TFT_YELLOW,TFT_BLACK);
           tft.drawString("Diagnostic Trouble Codes",30,28,4);
           delay(500);
-          getPID("ATE0");//force echo off
+          elm.exchange("ATE0");//force echo off
           //#1 get number of DTC & MIL status
           //(milByte = 80+1,80h=MIL ON,no of dtc = milByte-80h)
           uint8_t error_cnt = 0;
@@ -480,7 +479,9 @@ void configMenu() {//control configuration menu
           uint8_t milByte = 0xFF;//suppose error
           while ((milByte == 0xFF) && (error_cnt <3) ) {//if 0xFF repeat reading again (must be 0x80+) try 3 times
             Serial.print(F("MIL Status 0101->"));
-            decodeMil(getPID("0101").c_str(), &milByte);//try read MIL status
+            const char* milReply = elm.exchange("0101");//try read MIL status
+            Serial.println(milReply);
+            decodeMil(milReply, &milByte);
             error_cnt++;
             delay(100);
            }
@@ -512,11 +513,12 @@ milByte = 0x86;
 
               while ((decoded < 0) && (error_cnt < 5))  {
                 Serial.print(F("Read DTC 03->"));
-                String dtcRead = getPID("03");//try read DTC code
+                const char* dtcRead = elm.exchange("03");//try read DTC code
+                Serial.println(dtcRead);
 #ifdef TEST_DTC
 dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC CC 43 01 C4 01";
 #endif
-                decoded = decodeDtcs(dtcRead.c_str(), dtcList, kMaxDtcs);
+                decoded = decodeDtcs(dtcRead, dtcList, kMaxDtcs);
                 error_cnt++;
                 delay(100);
               }
@@ -574,7 +576,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
              #endif
              if (touched && (t_y > 225) && (t_x < 127)) {//touch clear MIL button
                clickSound();
-               BTSerial.print("04\r");//clear MIL 04->7F 04 78  7F 04 78
+               elm.send("04");//clear MIL 04->7F 04 78  7F 04 78
                tft.setTextColor(TFT_BLACK,TFT_GREEN);
                tft.drawCentreString("* Successful Clear MIL *",159,120,4);
                Serial.println(F("* Successful Clear MIL *"));
@@ -683,7 +685,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
             break;//exist main config menu loop while
           }//select = 7              
            pressed = false;   
-           prompt = true;//to trig reading elm again 
+           elm.requestStep();//to trig reading elm again 
           } //if holdtimer > 3000
         delay(250);//delay avoid bounce
        //**********************

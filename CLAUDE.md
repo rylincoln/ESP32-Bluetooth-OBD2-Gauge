@@ -67,24 +67,24 @@ tools.ctags.path=<N>/ctags
 
 ### One translation unit, ordered by includes
 
-The `.ino` declares the globals, then includes `image.h` and `touchscreen.h` (line 185), defines a few shared functions, then includes `bluetooth.h`, `meter.h` and `config.h` (line 271). `config.h` pulls in `music.h`, `nes_audio.h`, `firmware_update.h` and `elm327.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is a separate compile unit, and so is each hardware-free module (such as `obd_reply.cpp`). Those modules use no Arduino headers or firmware globals, so `test/` can build them directly, and the core compiles them as `gnu++11`. `beep()` and `clickSound()` live in `firmware_update.h`.
+The `.ino` declares the globals, then includes `image.h` and `touchscreen.h`, defines a few shared functions, then includes `bluetooth.h`, `meter.h` and `config.h`. `config.h` pulls in `music.h`, `nes_audio.h` and `firmware_update.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is a separate compile unit, and so is each hardware-free module (such as `obd_reply.cpp`). Those modules use no Arduino headers or firmware globals, so `test/` can build them directly, and the core compiles them as `gnu++11`. `beep()` and `clickSound()` live in `firmware_update.h`.
 
 `image.h` is code for its first 106 lines and generated RGB565 arrays after that. `music.h` is VGM bytes on very long lines. Read both with line limits.
 
 ### Polling loop
 
-`loop()` keeps one request in flight. A `>` from the ELM327 sets `prompt`, and the next pass hands `bt_message` to `updateMeter()` and sends the next PID. `pidReadSkip` polls slow-moving values less often. Drawing shares this thread, so slow draws lower the poll rate.
+`Elm327Link` (the global `elm`) owns the adapter connection and keeps one request in flight. When `elm.stepDue()` says a `>` has arrived, `loop()` hands `elm.reply()` to `updateMeter()`, and `elm.advance()` sends the next PID. Each PID's `skip` count polls slow-moving values less often. Drawing shares this thread, so slow draws lower the poll rate. `BTSerial` only appears in `bluetooth.h`, which keeps scanning and connecting because they drive the screen and LEDs directly.
 
-`obd_reply` turns reply text into values. It depends on `elm327Init`: it splits replies on spaces and skips `pidCode` length / 2 bytes, which needs headers and echo off (`ATH0`, `ATE0`) with spaces left on. `setup()` also treats the list positionally: it sends an extra CR after index 1 (`ATBRD23`) and waits 2 s after the last entry (`0100`).
+`obd_reply` turns reply text into values. It depends on the setup commands in `elm327_link.cpp`: it splits replies on spaces and skips `pidCode` length / 2 bytes, which needs headers and echo off (`ATH0`, `ATE0`) with spaces left on. `initialise()` also treats that list positionally: it sends an extra CR after `ATBRD23` and waits 2 s after the last entry (`0100`).
 
-The DTC and VIN screens use a separate blocking path: `getPID()` in `elm327.h`, with decoding in `obd_reply`. Discovery matches the exact Bluetooth name `OBDII`, and the README recommends a v1.5 adapter over v2.1.
+The DTC and VIN screens use the blocking `elm.exchange()`, with decoding in `obd_reply`. Discovery matches the exact Bluetooth name `OBDII`, and the README recommends a v1.5 adapter over v2.1.
 
 ### Three index spaces
 
 Meter code uses three different indexes, often in the same function:
 
 - **PID index** (0-6) is a row in `pidTable` and `warningValue`.
-- **Slot** (0-6) is a position in the current layout's poll order: `pidIndex`, `pidList`, `pidReadSkip`, `old_data`. `layoutTable[layout][slot]` gives its PID index, meter type and cell.
+- **Slot** (0-6) is a position in the current layout's poll order: `elm.slot()`, `old_data`. `layoutTable[layout][slot]` gives its PID index, meter type and cell.
 - **Cell** is a screen position: 1-9 for arc and numeric meters, 1-4 for vertical bars.
 
 `gauge_tables.cpp` holds both tables, and `make -C test` checks them. To change a layout, edit its row in `layoutTable`. Slots without a meter are still polled, and auto-off needs PID 4 (PCM volts, `0142`) in the last slot of every layout.
@@ -95,7 +95,7 @@ To add a PID, add a row to `pidTable` and raise `kPidCount`, plus a `Formula` an
 
 ### Blocking screens
 
-`configMenu()` takes over from `loop()` with its own `while (true)`, and each sub-screen blocks again on `while (digitalRead(SELECTOR_PIN) == HIGH)`. These wait loops call `autoDim()` and `checkCPUTemp()` so overheat protection stays live, and new screens should do the same. The menu sets `prompt = true` so polling resumes on exit.
+`configMenu()` takes over from `loop()` with its own `while (true)`, and each sub-screen blocks again on `while (digitalRead(SELECTOR_PIN) == HIGH)`. These wait loops call `autoDim()` and `checkCPUTemp()` so overheat protection stays live, and new screens should do the same. The menu calls `elm.requestStep()` so polling resumes on exit.
 
 ### Shutdown
 

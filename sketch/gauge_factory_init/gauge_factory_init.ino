@@ -65,7 +65,7 @@ void performUpdate(Stream &updateSource, size_t updateSize) {
 
     }); 
 
-      size_t written = Update.writeStream(updateSource, updateSize);
+      size_t written = Update.writeStream(updateSource);
       if (written == updateSize) {
          Serial.println("Written : " + String(written) + " successfully");
       }

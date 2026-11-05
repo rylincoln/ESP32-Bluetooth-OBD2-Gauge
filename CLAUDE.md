@@ -95,7 +95,7 @@ To add a PID, add a row to `pidTable` and raise `kPidCount`, plus a `Formula` an
 
 ### Blocking screens
 
-`configMenu()` takes over from `loop()` with its own `while (true)`, and each sub-screen blocks again on `while (digitalRead(SELECTOR_PIN) == HIGH)`. These wait loops call `autoDim()` and `checkCPUTemp()` so overheat protection stays live, and new screens should do the same. The menu calls `elm.requestStep()` so polling resumes on exit.
+`configMenu()` takes over from `loop()` with its own `while (true)`, and each sub-screen blocks again on `while (screenWaiting())`. That call keeps auto-dim and overheat protection running until the button is pressed, so new screens should wait on it too. The menu calls `elm.requestStep()` so polling resumes on exit.
 
 ### Shutdown
 
@@ -123,7 +123,7 @@ The speaker on GPIO 26 normally uses LEDC via `ledcWriteTone`. The About page ru
 ## Gotchas
 
 - **Line endings:** every text source is committed CRLF except `gauge_factory_init.ino` (LF), with no `.gitattributes`. Keep each file's endings and confirm `git diff --stat` shows only the lines you meant to change. Commit `926ccb3` shows the cost of a flip: about 100k lines of churn with no content change.
-- **Hold timers:** `holdtime - millis() > 3000` (`.ino:392`, `.ino:438`, `config.h:333`) subtracts backwards and wraps, so it is true on the second pass. Holds register after one debounce delay (about 200 ms), not the stated 3 s. Swapping the operands changes how every menu feels, so treat it as a UX change.
+- **Hold feel:** the code once said 3 s but its timer subtracted backwards, so holds have always registered on the next debounced pass, about 200 ms after the press. `ButtonGesture::kHoldMs` keeps that feel on purpose. Raising it past 200 changes how every menu feels, so treat it as a UX change.
 - **`SKIP_CONNECTION` doesn't skip:** `connectLastOBDII()` still runs at `.ino:383` and resets `foundOBD2` when the connection fails, which lands in the scan loop. Viewing meters without an adapter needs a code change.
 - **Fresh flash:** with no `/TouchCalData1`, `touch_calibrate()` blocks `setup()` until all four corners are touched (holding the button at boot forces recalibration). The logo screen then shows a red "File not found" for 3 s, because nothing in this repo writes `/vaandcob.jpg`. Both are expected.
 - **Pins:** the display's are in `User_Setup.h`, the touch controller's in `touchscreen.h`, and the rest at the top of the `.ino`, duplicated in `gauge_factory_init.ino`. The button is also hard-coded as `GPIO_NUM_27` at `.ino:222` and `meter.h:434`.

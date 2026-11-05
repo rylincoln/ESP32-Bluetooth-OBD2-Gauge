@@ -21,6 +21,7 @@ $(eval $(call add_test,obd_reply,test_obd_reply.cpp $(SKETCH)/obd_reply.cpp))
 $(eval $(call add_test,gauge_tables_t6,$(TABLES)))
 $(eval $(call add_test,gauge_tables_t5,$(TABLES),-DFORD_T5))
 $(eval $(call add_test,elm327_link,test_elm327_link.cpp $(SKETCH)/elm327_link.cpp))
+$(eval $(call add_test,button_gesture,test_button_gesture.cpp $(SKETCH)/button_gesture.cpp))
 
 .PHONY: all clean
 all: $(TESTS:%=run-%)

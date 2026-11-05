@@ -102,7 +102,7 @@ void animation() {//start field effect
 
   bk.setTextColor(TFT_BLACK,TFT_ORANGE);
 //loop draw Animation
-  while (digitalRead(SELECTOR_PIN) == HIGH) {//exit if press button
+  while (screenWaiting()) {//exit if press button
 
   //draw road
     bk.fillSprite(0x4228);//draw road
@@ -151,8 +151,6 @@ void animation() {//start field effect
   digitalWrite(LED_RED_PIN, random(0,2));
   digitalWrite(LED_GREEN_PIN, random(0,2));
   digitalWrite(LED_BLUE_PIN, random(0,2));
-  checkCPUTemp();
-  autoDim();
   }
  //remove sprites
   car.deleteSprite();
@@ -310,8 +308,7 @@ void listMenu(uint8_t choice) {
 /*----------------*/
 void configMenu() {//control configuration menu
   uint8_t select = 0;
-  bool pressed = false;
-  long holdtimer = 0;
+  ButtonGesture button;
   bool currentFlag = showsystem;//keep current flag status  
     beep();
     tft.fillScreen(TFT_BLACK);//clear screen
@@ -322,11 +319,9 @@ void configMenu() {//control configuration menu
     delay(1000);
     while (true) {//loop check button press
 
-      if (digitalRead(SELECTOR_PIN) == LOW) {//button pressed   
-        if (!pressed) {
-          pressed = true;//set press flag
-          holdtimer = millis();  
-        } else if (holdtimer - millis() > 3000) {//hold 3 sec enter config menu
+      bool buttonDown = digitalRead(SELECTOR_PIN) == LOW;
+      ButtonEvent buttonEvent = button.update(buttonDown, millis());
+      if (buttonEvent == ButtonEvent::Hold) {//select this menu
 //----------  TOGGLE SHOW SYSTEM STATUS  -----------
           if (select == 0) {
             beepbeep();
@@ -343,11 +338,7 @@ void configMenu() {//control configuration menu
            loadMyPic();//load pic from sdcard to spiffs
            tft.setTextColor(TFT_BLACK,TFT_WHITE);
            tft.drawCentreString("[- Press button to exit -]",159,215,4); 
-           while (digitalRead(SELECTOR_PIN) == HIGH) {
-             //wait for button press to exit
-             checkCPUTemp();
-             autoDim();
-           }//while 
+           while (screenWaiting()) {}//wait for button press to exit
            clickSound();
            tft.fillScreen(TFT_BLACK);//clear screen
            tft.setTextColor(TFT_BLACK,TFT_ORANGE);
@@ -367,9 +358,7 @@ void configMenu() {//control configuration menu
            tft.setTextColor(TFT_BLACK,TFT_WHITE);
            tft.drawCentreString("[- Press button to exit -]",159,215,4);    
            delay(1000);    
-           while (digitalRead(SELECTOR_PIN) == HIGH) {//wait for button press to exit       
-              autoDim();
-              checkCPUTemp(); 
+           while (screenWaiting()) {//wait for button press to exit       
               //touching
               uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
               bool touched = getTouch(&t_x, &t_y);
@@ -413,9 +402,7 @@ void configMenu() {//control configuration menu
             tft.fillRect(280,225,16,3,TFT_WHITE);//+
             setWarning(warningMenuIndex,inc_dec);//list menu first
             delay(1000);
-            while (digitalRead(SELECTOR_PIN) == HIGH) {//wait for button press to exit       
-              autoDim();
-              checkCPUTemp(); 
+            while (screenWaiting()) {//wait for button press to exit       
               String status = "";
               if (foundOBD2) {//temperature read not working if not connect to bluetooh or 
                 status = "    " +String(tempRead,1)+"`c"; 
@@ -564,9 +551,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
            }//else if A >0x80
           }//else if error_ent>5 
 
-           while (digitalRead(SELECTOR_PIN) == HIGH) { //wait for button press to exit
-             checkCPUTemp();
-             autoDim();
+           while (screenWaiting()) { //wait for button press to exit
              //CLEAR MIL
              if (no_of_dtc !=0) {//if there is dtc, touch checking for clear MIL
              uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
@@ -615,9 +600,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
            String result = String(ecu_off_volt, 1);
            tft.drawCentreString(result.c_str(),159,135,4);
            delay(1000);
-           while (digitalRead(SELECTOR_PIN) == HIGH) {//wait for button press to exit
-            checkCPUTemp();
-            autoDim();
+           while (screenWaiting()) {//wait for button press to exit
             uint16_t t_x = 0, t_y = 0; // To store the touch coordinates
             bool touched = getTouch(&t_x, &t_y);
             if (touched && (t_y > 211)) {
@@ -684,22 +667,15 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
             }            
             break;//exist main config menu loop while
           }//select = 7              
-           pressed = false;   
-           elm.requestStep();//to trig reading elm again 
-          } //if holdtimer > 3000
-        delay(250);//delay avoid bounce
-       //**********************
-        } else {//button release
-          if (pressed) {//button release
-            select++;//next menu
-            if (select == maxMenu) select = 0;
-            listMenu(select);//next menu
-            clickSound();
-            pressed = false;  
-            delay(200);
-          }//pressed
-
-       }//if press&& digitalread
+           elm.requestStep();//to trig reading elm again
+      } else if (buttonEvent == ButtonEvent::Tap) {//next menu
+        select++;
+        if (select == maxMenu) select = 0;
+        listMenu(select);
+        clickSound();
+        delay(200);
+      }
+      if (buttonDown) delay(250);//delay avoid bounce
      checkCPUTemp();
      autoDim();
     

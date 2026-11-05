@@ -196,9 +196,7 @@ void updateFirmwareWIFI() {
     tft.drawString(txt,0,140,4);  
     tft.setTextColor(TFT_BLACK,TFT_WHITE);
     tft.drawCentreString("[- Press button to exit -]",159,215,4);  
-    while (digitalRead(SELECTOR_PIN) == HIGH) {//wait for button press to exit       
-      autoDim();
-      checkCPUTemp(); 
+    while (screenWaiting()) {//wait for button press to exit       
       server.handleClient();//update server handle      
       delay(300);//delay button press
     } //exit wifi update      

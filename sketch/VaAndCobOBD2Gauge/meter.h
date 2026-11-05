@@ -324,4 +324,13 @@ void autoDim() {
   }//if light > lightlevel
 }//autodim
 //---------------------------
+//every blocking screen loops on this: true until the button is pressed, keeping
+//auto-dim and overheat protection running meanwhile
+bool screenWaiting() {
+  if (digitalRead(SELECTOR_PIN) == LOW) return false;
+  autoDim();
+  checkCPUTemp();
+  return true;
+}
+//---------------------------
 /*############################################*/

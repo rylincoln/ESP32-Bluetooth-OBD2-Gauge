@@ -46,6 +46,7 @@ Preferences pref;         //create preference
 #include "obd_reply.h"  //turns ELM327 replies into values
 #include "gauge_tables.h"  //the PIDs and layouts
 #include "elm327_link.h"  //the connection to the ELM327 adapter
+#include "button_gesture.h"  //tap and hold
 
 
 //Pin configuration
@@ -82,9 +83,8 @@ String line[12] = { "", "", "", "", "", "", "", "", "", "", "", "" };  //buffer 
 bool dim = false;                                                      //back light dim flag
 const uint8_t LIGHT_LEVEL = 40;                                        //backlight control by light level Higher = darker light
 long runtime = 0;                                                      //to check FPS
-long holdtime = 0;                                                     //hold time for button pressed check
 const String compile_date = __DATE__ " - " __TIME__;                   //get built date and time
-bool press = false;                                                    // button press flag
+ButtonGesture mainButton;                                              //the button on the meter and scan screens
 bool showsystem = false;                                               //show fps and temp EEPROM 0x01
 uint8_t pidRead = 0;                                                   //counter that hold number of pids been read to check pid/sec
 String serial_no = "";                                                 //keep serial no.
@@ -325,14 +325,9 @@ recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
     autoDim();  //auto backlight handle
     //checkCPUTemp(); //check temp never work if BT or WIFI not connected
     if (digitalRead(SELECTOR_PIN) == LOW) {  //button pressed
-      if (!press) {
-        press = true;                          //set flag
-        holdtime = millis();                   //set timer
-      } else if (holdtime - millis() > 500) {  //press once and longer
-        configMenu();                          //open config menu
-        press = false;                         //reset flag
-      }                                        //else if holdtimer > 30000
-      delay(200);                              //delay avoid bounce
+      //the scan blocks for seconds and can miss a release, so only presses go in
+      if (mainButton.update(true, millis()) == ButtonEvent::Hold) configMenu();
+      delay(200);  //delay avoid bounce
     }
   }
 
@@ -349,34 +344,26 @@ recent_client_addr : {0x00,0x00,0x00,0x00,0x00,0x00} array of bytes[6]
 /*###################################*/
 void loop() {
   //SCAN BUTON (button press HOLD to config menu)
-  if (digitalRead(SELECTOR_PIN) == LOW) {  //button pressed
-    if (!press) {
-      press = true;                           //set flag
-      holdtime = millis();                    //set timer
-    } else if (holdtime - millis() > 3000) {  //press once and longer than 3 sec
-      configMenu();                           //open config menu
-      press = false;                          //reset flag
-      if (foundOBD2) initScreen();            //open new layout screen
-    }                                         //else if holdtimer > 30000
-    delay(200);                               //delay avoid bounce
-  } else {                                    //button release
-    if (press) {                              //change layout next page
-      layout++;                               //change to next layout page
-      if (layout == kLayoutCount) layout = 0;
-      ledcWriteTone(buzzerChannel, 5000);  //play click sound
-      delay(5);
-      ledcWriteTone(buzzerChannel, 0);
-      initScreen();  //open meter screen
-                     //reset variable
-      for (uint8_t i = 0; i < kSlotCount - 1; i++) old_data[i] = 0.0;
-      engine_off_count = 0;
-      elm.restartRound();          //discard replies for the old layout
-      press = false;               //reset flag
-      delay(200);                  //delay avoid bounce
+  bool buttonDown = digitalRead(SELECTOR_PIN) == LOW;
+  ButtonEvent buttonEvent = mainButton.update(buttonDown, millis());
+  if (buttonEvent == ButtonEvent::Hold) {
+    configMenu();                 //open config menu
+    if (foundOBD2) initScreen();  //open new layout screen
+  } else if (buttonEvent == ButtonEvent::Tap) {  //change layout next page
+    layout++;                     //change to next layout page
+    if (layout == kLayoutCount) layout = 0;
+    ledcWriteTone(buzzerChannel, 5000);  //play click sound
+    delay(5);
+    ledcWriteTone(buzzerChannel, 0);
+    initScreen();  //open meter screen
+                   //reset variable
+    for (uint8_t i = 0; i < kSlotCount - 1; i++) old_data[i] = 0.0;
+    engine_off_count = 0;
+    elm.restartRound();  //discard replies for the old layout
+    delay(200);          //delay avoid bounce
+  }
+  if (buttonDown) delay(200);  //delay avoid bounce
 
-    }  //if press
-
-  }  //else digitalRead
   //----------------------
   //SERIAL PORT read
   if (Serial.available() > 0) {

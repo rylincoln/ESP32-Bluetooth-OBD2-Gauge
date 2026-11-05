@@ -64,6 +64,14 @@ _Avoid_: gauge
 The reading beyond which a PID's meter turns red.
 _Avoid_: threshold, limit
 
+**Tap**:
+Pressing and releasing the button. It moves to the next layout or menu entry.
+_Avoid_: click, short press
+
+**Hold**:
+Keeping the button down until the gauge next checks it, about 200 ms. It opens the config menu or selects a menu entry.
+_Avoid_: long press
+
 ### Shutting down
 
 **PCM volts**:

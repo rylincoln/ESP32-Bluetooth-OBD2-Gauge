@@ -163,14 +163,18 @@ int decodeDtcs(const char* reply, DtcCode* codes, int maxCodes) {
 
   if (byteCount == 0 || bytes[0] != 0x43) return -1;
 
+  // Each computer's list is a 43, a count of its codes, then that many pairs of bytes.
+  // A code can itself start with the byte 43, so only the count says where a list ends.
   int listed = 0;
   int i = 0;
-  while (i < byteCount && listed < maxCodes) {
-    if (bytes[i] == 0x43) i += 2;  // a 43 opens each computer's list, followed by its count
-    if (i + 1 >= byteCount) break;
-    formatDtc(bytes[i], bytes[i + 1], &codes[listed]);
-    listed++;
+  while (i + 1 < byteCount && bytes[i] == 0x43 && listed < maxCodes) {
+    int codesLeft = bytes[i + 1];
     i += 2;
+    for (; codesLeft > 0 && i + 1 < byteCount && listed < maxCodes; codesLeft--) {
+      formatDtc(bytes[i], bytes[i + 1], &codes[listed]);
+      listed++;
+      i += 2;
+    }
   }
   return listed;
 }

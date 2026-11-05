@@ -503,7 +503,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
                 error_cnt++;
                 delay(100);
               }
-              if (error_cnt >= 10) {//exist by error counter
+              if (decoded < 0) {//no reply to 03 after every try
                 Serial.println(F("Error Reading DTCs!"));
                 tft.setTextColor(TFT_WHITE,TFT_RED);
                 tft.drawCentreString("* Error Reading DTCs! *",159,120,4);
@@ -515,7 +515,7 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
               } else {
        //#3 Show the real DTC codes
               beepbeep();        
-              no_of_dtc = decoded > 0 ? decoded : 0;
+              no_of_dtc = decoded;
               for (uint8_t i = 0; i < no_of_dtc; i++) Serial.printf("%s,", dtcList[i].text);
               tft.setTextColor(TFT_RED,TFT_BLACK);
               String txt = "MIL is ON - No of DTCs = "+String(no_of_dtc);

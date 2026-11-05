@@ -19,8 +19,8 @@ const size_t kWarningTextSize = 16;
 
 void GaugeSettings::load() {
   store_.open(kNamespace);
-  layout = store_.getUShort(kLayoutKey, 0);
-  if (layout > kLayoutCount) layout = 0;
+  uint16_t savedLayout = store_.getUShort(kLayoutKey, 0);
+  layout = savedLayout < kLayoutCount ? savedLayout : 0;
   showSystem = store_.getBool(kShowSystemKey, false);
   tempOffset = store_.getInt(kTempOffsetKey, kFactoryTempOffset);
   for (uint8_t i = 0; i < kPidCount; i++) {

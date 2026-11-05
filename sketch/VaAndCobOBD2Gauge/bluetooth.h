@@ -99,9 +99,7 @@ void scanBTdevice() {//scan bluetooth device
         }
       }//while mac address copied to client_addr for connect below code
       if (settings.saveRecentClient(client_addr)) Serial.println(F("Save a new BT client address"));
-    } else //not match
-       foundOBD2 = false;
- 
+    }
   }//for loop list device
 
 
@@ -142,13 +140,15 @@ void connectLastOBDII() {
   BTSerial.connect(settings.recentClient, 0, sec_mask, role);//connect to OBDII adaptor
   uint8_t try_count = 0;
   bool blink = false;
-  while(!BTSerial.connected(1000) && (try_count <3)) {
+  bool connected = BTSerial.connected(1000);
+  while (!connected && (try_count <3)) {
     Serial.print(F("."));
     blink =! blink;
     digitalWrite(LED_BLUE_PIN,blink);//blue led offset
     try_count++;
+    connected = BTSerial.connected(1000);
   }
-  if (try_count == 3) {//cannot connect
+  if (!connected) {//cannot connect
     Terminal("OBDII Adaptor not found!",0,48,320,191);
     Serial.println(F("OBDII Adaptor not found!"));
     BTSerial.disconnect();

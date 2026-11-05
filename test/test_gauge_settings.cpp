@@ -147,6 +147,31 @@ TEST(load_replaces_a_layout_beyond_the_last) {
   CHECK_EQ(settings.layout, 0);
 }
 
+TEST(load_replaces_a_layout_one_past_the_last) {
+  FakeStore store;
+  store.ushorts["layout"] = 8;
+  GaugeSettings settings(store);
+  settings.load();
+  CHECK_EQ(settings.layout, 0);
+}
+
+TEST(load_checks_the_whole_saved_layout) {
+  // 257 is stored in 16 bits and would look like layout 1 if cut down to a byte first.
+  FakeStore store;
+  store.ushorts["layout"] = 257;
+  GaugeSettings settings(store);
+  settings.load();
+  CHECK_EQ(settings.layout, 0);
+}
+
+TEST(load_keeps_the_last_layout) {
+  FakeStore store;
+  store.ushorts["layout"] = 7;
+  GaugeSettings settings(store);
+  settings.load();
+  CHECK_EQ(settings.layout, 7);
+}
+
 TEST(save_layout_writes_a_changed_layout) {
   FakeStore store;
   GaugeSettings settings(store);

@@ -227,6 +227,43 @@ TEST(reply_cut_short_lists_only_what_arrived) {
   CHECK_STR(codes[1].text, "U0693");
 }
 
+TEST(code_starting_with_the_byte_43_stays_a_code) {
+  // 43 01 is C0301. Reading every 43 as the start of a list used to lose these.
+  DtcCode codes[kMaxDtcs];
+  int count = decodeDtcs("43 02 00 7D 43 01 \r\r", codes, kMaxDtcs);
+  CHECK_EQ(count, 2);
+  CHECK_STR(codes[0].text, "P007D");
+  CHECK_STR(codes[1].text, "C0301");
+}
+
+TEST(first_code_starting_with_the_byte_43_stays_a_code) {
+  DtcCode codes[kMaxDtcs];
+  int count = decodeDtcs("43 01 43 01 \r\r", codes, kMaxDtcs);
+  CHECK_EQ(count, 1);
+  CHECK_STR(codes[0].text, "C0301");
+}
+
+TEST(padding_after_the_last_code_is_not_a_code) {
+  DtcCode codes[kMaxDtcs];
+  int count = decodeDtcs("43 01 C4 01 00 00 \r\r", codes, kMaxDtcs);
+  CHECK_EQ(count, 1);
+  CHECK_STR(codes[0].text, "U0401");
+}
+
+TEST(padding_that_could_pass_for_a_count_is_not_a_code) {
+  DtcCode codes[kMaxDtcs];
+  int count = decodeDtcs("43 01 C4 01 AA AA AA AA \r\r", codes, kMaxDtcs);
+  CHECK_EQ(count, 1);
+  CHECK_STR(codes[0].text, "U0401");
+}
+
+TEST(computer_with_no_codes_leaves_the_next_computers_list) {
+  DtcCode codes[kMaxDtcs];
+  int count = decodeDtcs("43 00 \r43 01 C4 01 \r\r", codes, kMaxDtcs);
+  CHECK_EQ(count, 1);
+  CHECK_STR(codes[0].text, "U0401");
+}
+
 TEST(no_data_is_not_a_dtc_reply) {
   DtcCode codes[kMaxDtcs];
   CHECK_EQ(decodeDtcs("NO DATA\r\r", codes, kMaxDtcs), -1);

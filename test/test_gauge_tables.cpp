@@ -78,14 +78,14 @@ TEST(cell_outside_the_grid_has_no_area) {
   CHECK_EQ(cellRect(MeterType::None, 1).width, 0);
 }
 
-TEST(auto_off_counts_the_undrawn_pcm_volts_slots) {
-  const int expected[kLayoutCount] = {1, 1, 1, 2, 1, 2, 1, 1};
+TEST(auto_off_counts_one_slot_on_every_layout) {
+  // So the gauge takes the same number of rounds to shut down whichever layout it's on.
   for (int layout = 0; layout < kLayoutCount; layout++) {
     int counted = 0;
     for (int slot = 0; slot < kSlotCount; slot++) {
       if (countsTowardAutoOff(layout, slot)) counted++;
     }
-    CHECK_EQ(counted, expected[layout]);
+    CHECK_EQ(counted, 1);
   }
 }
 

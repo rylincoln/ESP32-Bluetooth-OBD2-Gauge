@@ -77,5 +77,5 @@ CellRect cellRect(MeterType meter, uint8_t cell) {
 
 bool countsTowardAutoOff(uint8_t layout, uint8_t slot) {
   const SlotPlan& plan = layoutTable[layout][slot];
-  return plan.meter == MeterType::None && plan.pid == kPcmVoltsPid;
+  return slot == kSlotCount - 1 && plan.pid == kPcmVoltsPid;
 }

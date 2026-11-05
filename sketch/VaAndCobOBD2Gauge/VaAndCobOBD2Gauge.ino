@@ -43,6 +43,7 @@ uint8_t temprature_sens_read();  //declare intermal temperature sensor functio
 Preferences pref;         //create preference
 #include <BluetoothSerial.h>
 #include <TFT_eSPI.h>  //Hardware-specific library
+#include "obd_reply.h"  //turns ELM327 replies into values
 
 
 //Pin configuration
@@ -476,7 +477,7 @@ void loop() {
       Serial.println(bt_message);
 #endif
 #ifdef TERMINAL  //for degbugging
-      getAB(bt_message);
+      decodeBytes(bt_message.c_str(), pidList[pidIndex].c_str(), &A, &B);
       Terminal(bt_message + "->" + String(A) + "," + String(B), 0, 48, 320, 191);
 #endif
       prompt = true;  //pid response ready to calculate & display

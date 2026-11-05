@@ -106,7 +106,13 @@ void animation() {//start field effect
   tft.drawString(txt,0,0,2);
   //get VIN
   getPID("ATE0");//force echo off
-  txt = "VIN :  " + getVIN(getPID("0902"));
+  char vin[kVinSize];
+  if (decodeVin(getPID("0902").c_str(), vin, sizeof vin)) {
+    Serial.printf("VIN: %s\n", vin);
+    txt = "VIN :  " + String(vin);
+  } else {
+    txt = "VIN :  Cannot read VIN";
+  }
   tft.setTextColor(TFT_GREENYELLOW); 
   tft.drawString(txt,0,20,2);
 
@@ -476,23 +482,22 @@ void configMenu() {//control configuration menu
           tft.drawString("Diagnostic Trouble Codes",30,28,4);
           delay(500);
           getPID("ATE0");//force echo off
-          //#1 get number of DTC & MIL status          
-          //getAB2("41 01 86 0E 88 88 41 01 81 0C 00 00 ","41","01");//(A = 80+1,80h=MIL ON,no of dtc = A-80h)
+          //#1 get number of DTC & MIL status
+          //(milByte = 80+1,80h=MIL ON,no of dtc = milByte-80h)
           uint8_t error_cnt = 0;
-          uint8_t no_of_dtc = 0;   
-          A = 0xFF;//supoose error read A
-          while ((A == 0xFF) && (error_cnt <3) ) {//if A == 0xFF repeat reading again (A must be 0x80+) try 3 times
+          uint8_t no_of_dtc = 0;
+          uint8_t milByte = 0xFF;//suppose error
+          while ((milByte == 0xFF) && (error_cnt <3) ) {//if 0xFF repeat reading again (must be 0x80+) try 3 times
             Serial.print(F("MIL Status 0101->"));
-            getAB2(getPID("0101"),"41","01");//try read MIL status
-            //Terminal(String(A).c_str(),0,88,320,125); 
+            decodeMil(getPID("0101").c_str(), &milByte);//try read MIL status
             error_cnt++;
             delay(100);
-           } 
+           }
 #ifdef TEST_DTC
-A = 0x86;   
+milByte = 0x86;
 #endif
 
-          if (A == 0xFF) {//Error reading MIL status
+          if (milByte == 0xFF) {//Error reading MIL status
            Serial.println(F("Error Reading MIL Status!"));
            tft.setTextColor(TFT_WHITE,TFT_RED);
            tft.drawCentreString("* Error Reading MIL Status! *",159,120,4);
@@ -502,30 +507,28 @@ A = 0x86;
            tft.drawCentreString("[- Press button to exit -]",159,215,4); 
            beep();
           } else {
-            if (A == 0x00) {//41 01 00 = Mil is OFF No DTC
+            if (milByte == 0x00) {//41 01 00 = Mil is OFF No DTC
              tft.setTextColor(TFT_GREEN,TFT_BLACK);
              tft.drawCentreString("MIL is OFF - No DTC",159,120,4);
              tft.setTextColor(TFT_BLACK,TFT_WHITE);
              tft.drawCentreString("[- Press button to exit -]",159,215,4); 
-            } else if (A >= 0x80) {//41 01 8x if A =>80h then MIL status ON else skip to NO MIL below
-              Serial.print(F("A = "));Serial.println(A,HEX);                   
+            } else if (milByte >= 0x80) {//41 01 8x if =>80h then MIL status ON else skip to NO MIL below
+              Serial.print(F("MIL byte = "));Serial.println(milByte,HEX);
       //  #2 get Raw Diagnostic Troulbe Code from ELM327
-            //(for 1 dtc)43 06 00 7D 
-            //(more than 1 dtc) 00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 e: E0 CC CC CC CC CC CC 43 01 C4 01 
               uint8_t error_cnt = 0;
-              String dtcRead =  "";
-              
-              //check first header 43 or 00
-              while ((dtcRead.substring(0,2) != "43") && (dtcRead.substring(0,2) != "00") && (error_cnt < 5))  {
+              int decoded = -1;//not a reply to 03 yet
+              DtcCode dtcList[kMaxDtcs] = {};//to keep all DTC in list
+
+              while ((decoded < 0) && (error_cnt < 5))  {
                 Serial.print(F("Read DTC 03->"));
-                dtcRead = getPID("03");//try read DTC code
-#ifdef TEST_DTC            
-dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC CC 43 01 C4 01";                
+                String dtcRead = getPID("03");//try read DTC code
+#ifdef TEST_DTC
+dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC CC 43 01 C4 01";
 #endif
-              //Terminal(dtcRead,0,88,320,125); 
+                decoded = decodeDtcs(dtcRead.c_str(), dtcList, kMaxDtcs);
                 error_cnt++;
                 delay(100);
-              }  
+              }
               if (error_cnt >= 10) {//exist by error counter
                 Serial.println(F("Error Reading DTCs!"));
                 tft.setTextColor(TFT_WHITE,TFT_RED);
@@ -536,50 +539,10 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
                 tft.drawCentreString("[- Press button to exit -]",159,215,4); 
                 beep();
               } else {
-       //#3 Interpret get the real DTC code 5 digits
-            //(for 1 dtc)43 06 00 7D 
-            // 00E 0: <43 06> /00 7D /C6 93 /1: /01 08 /C6 0F /02 E9 /02 2: E0 /CC CC /CC CC /CC CC /<43 01>/C4 01 
+       //#3 Show the real DTC codes
               beepbeep();        
-              int byteCount = 0;//keep number of data byte
-              String hexcode[128];//4x16
-              uint8_t StringCount = 0; 
-              dtcRead.trim();              
-              while (dtcRead.length() > 0) {//split to hex byte
-                int index = dtcRead.indexOf(' ');
-                String getByte =  dtcRead.substring(0, index);//get first byte
-                if (getByte.indexOf(':') == -1 ) {//no :
-                  if (getByte.length() >= 3) {
-                  byteCount = strtol(getByte.c_str(), NULL, 16);//get byte count = 14 byte
-                  Serial.print(byteCount);
-                  Serial.print(" = ");
-                  } else {//skip ':' byte
-                  hexcode[StringCount++] = getByte;//copy strings from 0 to space to hexcode
-                  Serial.print(getByte + ",");             
-                  if (StringCount == byteCount) break;//stop when byte count reach, ignore the rest
-                  //4306007DC6930108C60F02E902E0 = 14 byte
-                  }                  
-                }   
-                dtcRead = dtcRead.substring(index + 1);//copy the rest behind space to elm_rs             
-              }//while
-
-              Serial.println(); //debug split hex byte
-            
-            //interpret DTC 007D=P007D C693=U0693 0108=P0108 C60F=U060F 02E9=P02E9 02E0=P02E0
-              String dtcList[16] = {};//to keep all DTC in list                
-              no_of_dtc = 0;
-              for (uint8_t index = 0;index < StringCount; index++) {   
-                if (hexcode[index] == "43") {//check if first nibble is 43
-                  index = index + 2;//skip 2 byte to next pid
-                }
-                String dtc_1 = hexcode[index];//C6
-                uint8_t code = strtol(dtc_1.substring(0,1).c_str(),0,16);//0x0C compare with dtcMap table
-                dtc_1 = dtcMap[code]+dtc_1.substring(1);//U0+6 = U06 change prefix,remove 1st char get the rest
-                index++;
-                String dtc_2 = hexcode[index];//0F              
-                dtcList[no_of_dtc] = dtc_1+dtc_2;//U060F 
-                Serial.print(dtcList[no_of_dtc] + ",");//got real DTC code here
-                no_of_dtc++;//keep real no of dtc in no_of_dtc  
-              }//for
+              no_of_dtc = decoded > 0 ? decoded : 0;
+              for (uint8_t i = 0; i < no_of_dtc; i++) Serial.printf("%s,", dtcList[i].text);
               tft.setTextColor(TFT_RED,TFT_BLACK);
               String txt = "MIL is ON - No of DTCs = "+String(no_of_dtc);
               tft.drawCentreString(txt,159,58,4);
@@ -590,13 +553,13 @@ dtcRead = "00E 0: 43 06 00 7D C6 93 1: 01 08 C6 0F 02 E9 02 2: E0 CC CC CC CC CC
               tft.setTextColor(TFT_WHITE,TFT_BLACK);           
               for (uint8_t i=0;i<no_of_dtc;i=i+4) {
                 tft.setTextColor(TFT_PINK,TFT_BLACK);   
-                tft.drawString(dtcList[i].c_str(),0,92+30*round(i/4),4);
-                tft.setTextColor(TFT_YELLOW,TFT_BLACK);   
-                tft.drawString(dtcList[i+1].c_str(),80,92+30*round(i/4),4);
-                tft.setTextColor(TFT_GREEN,TFT_BLACK);   
-                tft.drawString(dtcList[i+2].c_str(),160,92+30*round(i/4),4);
-                tft.setTextColor(TFT_BLUE,TFT_BLACK);   
-                tft.drawString(dtcList[i+3].c_str(),240,92+30*round(i/4),4);
+                tft.drawString(dtcList[i].text,0,92+30*round(i/4),4);
+                tft.setTextColor(TFT_YELLOW,TFT_BLACK);
+                tft.drawString(dtcList[i+1].text,80,92+30*round(i/4),4);
+                tft.setTextColor(TFT_GREEN,TFT_BLACK);
+                tft.drawString(dtcList[i+2].text,160,92+30*round(i/4),4);
+                tft.setTextColor(TFT_BLUE,TFT_BLACK);
+                tft.drawString(dtcList[i+3].text,240,92+30*round(i/4),4);
               }
         //#5 show clear MIL button
                tft.setTextColor(TFT_BLACK,TFT_WHITE);

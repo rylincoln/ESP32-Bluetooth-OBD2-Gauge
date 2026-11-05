@@ -56,8 +56,7 @@ void numericMeter(uint8_t cell, uint8_t pid) {
 /*---------------------------*/
 //plot number on digital Meter
 void plotNumeric(uint8_t cell, float data, int warn, bool digit) {
-  int  compare = warn/data;//compare data and warn
-  if (compare == 0) {//warning
+  if (isWarning(data, warn)) {
     int w = screenWidth / 2 - 1;
     int h = screenHeight / 3 - 1;
     int x = cell1_x[cell - 1];
@@ -152,12 +151,7 @@ if (data != old_data[pidIndex]) {
   if (data < min) data = min;
   if (data > max) data = max;
 
-  int arcColor = TFT_GREEN;
-  int  compare = warn/data;//compare data and warn
-  if (compare == 0) //warning
-     arcColor = TFT_RED;//red font red arc
-  else // no warn
-     arcColor = TFT_GREEN;//gren font green arc
+  int arcColor = isWarning(data, warn) ? TFT_RED : TFT_GREEN;//red font red arc when warning
   tft.setTextColor(arcColor, TFT_BLACK);
   tft.drawString(result.c_str(), x + 10, y + 60, 2);  // data
   int angle = map(data, min, max, 135, 225);
@@ -222,12 +216,7 @@ if (data != old_data[pidIndex]) {//if value change then redraw new data
   int w = screenWidth / 4;
   if (data < min) data = min;
   if (data > max) data = max;
-  int barColor = TFT_GREEN;
-  int  compare = warn/data;//compare data and warn
-  if (compare == 0) //warning
-     barColor = TFT_RED;//red bar red font
-  else // no warn
-     barColor = TFT_GREEN;//green bar green font
+  int barColor = isWarning(data, warn) ? TFT_RED : TFT_GREEN;//red bar red font when warning
   //draw new bar
   int barH = map(data, min, max, 0, 182);
   if (data > old_data[pidIndex]) //new data > old data -> draw red bar
@@ -372,34 +361,6 @@ void initScreen() {
 
 }  //initscreen
 /*-------------------------------*/
-
-//get A B from response return in global A B variable
-void getAB(String elm_rsp) {  //41 05 2A 3C 01>
-  if (elm_rsp == "NO DATA\r\r>") {//pid no data
-    A = 0;
-    B = 0;
-
-  } else {
-    //check if pid is 2 or 3 command length.
-    uint8_t charcnt = pidList[pidIndex].length() / 2;  //0105->2,221E1C->3
-    String strs[8];
-    uint8_t StringCount = 0;
-    while (elm_rsp.length() > 0) {//keep reading each char
-      int index = elm_rsp.indexOf(' ');//check space
-      if (index == -1)  // No space found
-      { //only data without space is now in strs {41,05,aa,bb}
-        strs[StringCount++] = elm_rsp; //last byte
-          A = strtol(strs[charcnt].c_str(),NULL,16);      //byte 3 save to A
-          B = strtol(strs[charcnt + 1].c_str(),NULL,16);  //byte 4 save to B
-        break;
-      } else {//found space
-        strs[StringCount++] = elm_rsp.substring(0, index);//copy strings from 0 to space to strs
-        elm_rsp = elm_rsp.substring(index + 1);//copy the rest behind space to elm_rsp
-      }
-    }  //while
-  }    //else
-}//getAB
-/*-------------------------------*/
 //check engine status if off then turn off gauge
 void engine_onoff(float data, uint8_t pid) {  //use pcm volt
 //check if pid is 010C eng speed and value = 0
@@ -450,28 +411,9 @@ void updateMeter(uint8_t pidNo, String response) {  //update parameter on screen
   bool digit = pidConfig[pidInCell[layout][pidNo]][7].toInt();
   int warn = warningValue[pidInCell[layout][pidNo]].toInt();
 
-  getAB(response);  //get AB
-  float data = 0.0;
-  switch (formula) {                  //choose fomula
-    case 0: data = A * 0.145; break;  //psi
-    case 1: data = A - 40; break;     //temp
-    case 2: data = A * 100.0 / 255; break;
-    case 3: data = (256 * A + B) / 4.0; break;
-    case 4: data = (256 * A + B) / 1000.0; break;
-    case 5: 
-      data = (256 * A + B) / 16.0; 
-      if (data >150 || data <0) data = old_data[pidIndex];//check if data is outbound use old data
-      break;
-    
-    case 6: 
-      data = (A*256+B)*5/72-18;
-      if (data >150 || data <0) data = old_data[pidIndex];//check if data is outbound use old data
-      break;
-    
-      //more formula
-  }  //switch fomula
+  decodeBytes(response.c_str(), pidList[pidNo].c_str(), &A, &B);
+  float data = toReading((Formula)formula, A, B, old_data[pidIndex]);
 
-  
   switch (layout) {
     case 0:
       {  //6 meter

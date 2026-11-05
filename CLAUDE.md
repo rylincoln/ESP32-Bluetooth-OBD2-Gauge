@@ -6,7 +6,7 @@ Arduino firmware for an ESP32-2432S028 board (2.8" 320x240 ILI9341, resistive to
 
 ## Build and verify
 
-There are no tests, linter or CI. Compiling is the only automated check, so compile both vehicle variants after a firmware change. Behaviour beyond that needs the physical gauge: report a change as compile-checked until the user has flashed it.
+`make -C test` runs the hardware-free modules on this computer and needs only a C++ compiler. There's no linter or CI. After a firmware change, run the tests and compile both vehicle variants. Anything the tests don't reach needs the physical gauge: report a change as compile-checked until the user has flashed it.
 
 Toolchain pins:
 
@@ -67,7 +67,7 @@ tools.ctags.path=<N>/ctags
 
 ### One translation unit, ordered by includes
 
-The `.ino` declares the globals, then includes `image.h` and `touchscreen.h` (line 185), defines a few shared functions, then includes `bluetooth.h`, `meter.h` and `config.h` (line 271). `config.h` pulls in `music.h`, `nes_audio.h`, `firmware_update.h` and `elm327.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is the only separate compile unit. `beep()` and `clickSound()` live in `firmware_update.h`.
+The `.ino` declares the globals, then includes `image.h` and `touchscreen.h` (line 185), defines a few shared functions, then includes `bluetooth.h`, `meter.h` and `config.h` (line 271). `config.h` pulls in `music.h`, `nes_audio.h`, `firmware_update.h` and `elm327.h`. Headers hold definitions and use whatever sits above them, and Arduino only generates prototypes for `.ino` functions, so each header is included exactly once and include order is load-bearing. `nes_audio.cpp` (vendored [Cartridge](https://github.com/connornishijima/Cartridge) NES audio player) is a separate compile unit, and so is each hardware-free module (such as `obd_reply.cpp`). Those modules use no Arduino headers or firmware globals, so `test/` can build them directly, and the core compiles them as `gnu++11`. `beep()` and `clickSound()` live in `firmware_update.h`.
 
 `image.h` is code for its first 106 lines and generated RGB565 arrays after that. `music.h` is VGM bytes on very long lines. Read both with line limits.
 
@@ -75,9 +75,9 @@ The `.ino` declares the globals, then includes `image.h` and `touchscreen.h` (li
 
 `loop()` keeps one request in flight. A `>` from the ELM327 sets `prompt`, and the next pass hands `bt_message` to `updateMeter()` and sends the next PID. `pidReadSkip` polls slow-moving values less often. Drawing shares this thread, so slow draws lower the poll rate.
 
-Parsing depends on `elm327Init`. `getAB()` splits on spaces and skips `pid.length()/2` echo bytes to fill the globals `A` and `B`, which needs headers and echo off (`ATH0`, `ATE0`) with spaces left on. `setup()` also treats the list positionally: it sends an extra CR after index 1 (`ATBRD23`) and waits 2 s after the last entry (`0100`).
+`obd_reply` turns reply text into values. It depends on `elm327Init`: it splits replies on spaces and skips `pidCode` length / 2 bytes, which needs headers and echo off (`ATH0`, `ATE0`) with spaces left on. `setup()` also treats the list positionally: it sends an extra CR after index 1 (`ATBRD23`) and waits 2 s after the last entry (`0100`).
 
-The DTC and VIN screens use a separate blocking path: `getPID()` and `getAB2()` in `elm327.h`, with DTC decoding inline in `config.h`. Discovery matches the exact Bluetooth name `OBDII`, and the README recommends a v1.5 adapter over v2.1.
+The DTC and VIN screens use a separate blocking path: `getPID()` in `elm327.h`, with decoding in `obd_reply`. Discovery matches the exact Bluetooth name `OBDII`, and the README recommends a v1.5 adapter over v2.1.
 
 ### Three index spaces
 
@@ -89,7 +89,7 @@ Meter code uses three different indexes, often in the same function:
 
 To change a layout, keep the `pidInCell` row and its `case` in both `initScreen()` and `updateMeter()` in agreement. Slots a layout doesn't draw call `engine_onoff()`. Every layout routes slot 6 there, and auto-off only fires when that slot holds PID 4 (PCM volts, `0142`), so keep PID 4 in slot 6.
 
-To add a PID, update `pidConfig`, `warningValue`, `pidInCell`, `parameterList` and `pidWarnStep`, add a formula `case` in `updateMeter()`, and raise the count hard-coded in those array sizes and in `initScreen()`.
+To add a PID, update `pidConfig`, `warningValue`, `pidInCell`, `parameterList` and `pidWarnStep`, add a `Formula` and its `case` in `toReading()`, and raise the count hard-coded in those array sizes and in `initScreen()`.
 
 `FORD_T5` swaps two `pidConfig` rows: oil temperature becomes IAT, and transmission temperature moves from `221E1C` to `221674` with a different formula.
 
